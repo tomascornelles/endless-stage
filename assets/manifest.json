@@ -1,8 +1,8 @@
 {
-  "_info": "Pon tus PNG en las carpetas indicadas. Si un archivo no existe, se usa una textura procedural. Cada valor es una lista: se escoge una al azar.",
+  "_info": "Pon tus PNG en las carpetas indicadas. Si un archivo no existe, se usa una textura procedural. Cada textura es una lista: se escoge una al azar. 'repeat' multiplica la repetición de cada textura: 2 = el patrón se ve el doble de pequeño; 0.5 = el doble de grande.",
   "textures": {
     "grass": [
-      "assets/textures/grass.jpg"
+      "assets/textures/grass.png"
     ],
     "asphalt": [
       "assets/textures/asphalt1.jpg",
@@ -13,7 +13,7 @@
       "assets/textures/rock.png"
     ],
     "stone": [
-      "assets/textures/stone_wall.png"
+      "assets/textures/stone-wall.png"
     ],
     "hay": [
       "assets/textures/hay.png"
@@ -22,7 +22,7 @@
       "assets/textures/concrete.png"
     ],
     "plaster": [
-      "assets/textures/plaster.png"
+      "assets/textures/plaster1.png"
     ],
     "roof": [
       "assets/textures/roof_tiles.png"
@@ -31,10 +31,10 @@
       "assets/textures/tire_mark.png"
     ],
     "snow": [
-      "assets/textures/snow.jpg"
+      "assets/textures/snow.png"
     ],
     "guardrail": [
-      "assets/textures/guardrail.png"
+      "assets/textures/guardrail.jpg"
     ],
     "wave": [
       "assets/textures/wave_wall.png"
@@ -43,7 +43,8 @@
       "assets/textures/wheel.png"
     ],
     "log": [
-      "assets/obstacles/log.png"
+      "assets/obstacles/wood.jpg",
+      "assets/obstacles/log.jpg"
     ],
     "cone": [
       "assets/obstacles/cone.png"
@@ -62,13 +63,38 @@
     "assets/houses/bricks2.jpg",
     "assets/houses/bricks3.jpg",
     "assets/houses/bricks4.png",
-    "assets/houses/bricks5.png"
+    "assets/houses/bricks5.png",
+    "assets/houses/facade1.jpg",
+    "assets/houses/facade2.jpg",
+    "assets/houses/shack1.jpg",
+    "assets/houses/wood1.jpg"
   ],
   "houseRoofs": [
-    "assets/houses/roof_slate.png"
+    "assets/houses/roof1.png",
+    "assets/houses/roof2.jpg"
   ],
   "menuImage": "assets/menu.png",
   "sounds": {
     "crash": "assets/sounds/crash.wav"
+  },
+  "repeat": {
+    "grass": 1,
+    "asphalt": 1,
+    "rock": 1,
+    "stone": 0.5,
+    "hay": 1,
+    "concrete": 1,
+    "plaster": 1,
+    "roof": 1,
+    "tire": 1,
+    "snow": 1,
+    "guardrail": 1,
+    "wave": 1,
+    "wheel": 1,
+    "log": 1,
+    "cone": 1,
+    "trees": 1,
+    "houseWalls": 1,
+    "houseRoofs": 1
   }
 }

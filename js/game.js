@@ -103,11 +103,13 @@ function init(M) {
     tireSnow: canvasTex(128, 128, (x, w, h) => { x.clearRect(0, 0, w, h); for (let i = 0; i < 6; i++) { x.fillStyle = `rgba(70,78,90,${rnd(0.3, 0.6)})`; x.fillRect(0, rnd(0, h), w, rnd(4, 14)); } })
   };
 
+  const sizedTex = (t, r) => { t.repeat.set(r || 1, r || 1); return t; };
   // Árboles: PNG de assets/trees (uno al azar por árbol) o dos sprites procedurales
   function spriteMat(url, kind) {
     const fb = canvasTex(64, 128, kind === 'pine' ? pineDraw : roundDraw);
     const m = new THREE.SpriteMaterial({ map: fb, transparent: true, alphaTest: 0.4 });
     m.userData.aspect = 2;
+    m.userData.size = (M.repeat && M.repeat.trees) || 1;
     ext(url, fb, img => { m.userData.aspect = img.height / img.width; });
     return m;
   }
@@ -118,20 +120,22 @@ function init(M) {
   // Casas: paredes y tejados de PNG (M.houseWalls / M.houseRoofs) más tintes procedurales
   const WALL_MATS = [0xf2e6d0, 0xd9a77b, 0xa8c3d6, 0xe0d28a, 0xc9b8e6, 0xf0c0b0]
     .map(c => new THREE.MeshLambertMaterial({ map: TX.plaster, color: c, side: DS }))
-    .concat((M.houseWalls || []).map(u => new THREE.MeshLambertMaterial({ map: ext(u, canvasTex(128, 128, noise('#d0c8b8', '90,80,70', 0.4))), side: DS })));
+    .concat((M.houseWalls || []).map(u => new THREE.MeshLambertMaterial({ map: sizedTex(ext(u, canvasTex(128, 128, noise('#d0c8b8', '90,80,70', 0.4))), M.repeat && M.repeat.houseWalls), side: DS })));
   const ROOF_MATS = [0x8a3b2a, 0x3d4a5c, 0x6b5744, 0x2e5a6b]
     .map(c => new THREE.MeshLambertMaterial({ map: TX.roof, color: c, side: DS }))
-    .concat((M.houseRoofs || []).map(u => new THREE.MeshLambertMaterial({ map: ext(u, canvasTex(128, 128, tileDraw)), side: DS })));
+    .concat((M.houseRoofs || []).map(u => new THREE.MeshLambertMaterial({ map: sizedTex(ext(u, canvasTex(128, 128, tileDraw)), M.repeat && M.repeat.houseRoofs), side: DS })));
 
   // Texturas como arrays: cada material escoge una al azar y la aplica al cargarse
   const texCache = {};
   const REPEAT = { plaster: 3, roof: 3, guardrail: 3, stone: 2, rock: 2, hay: 2, concrete: 2, wave: 2, wheel: 2, log: 2 };
+  // Repetición final = base × ajuste de M.repeat (manifiesto)
+  const rep = name => ((REPEAT[name] || 1) / 0.3) * ((M.repeat && M.repeat[name]) || 1);
   function bindMap(mat, name) {
     const list = M.textures && M.textures[name];
     const arr = Array.isArray(list) ? list : (list ? [list] : []);
     if (!arr.length) return;
     const url = pick(arr);
-    const r = REPEAT[name] || 1;
+    const r = rep(name);
     const apply = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(r, r); mat.map = t; mat.needsUpdate = true; };
     if (texCache[url]) return apply(texCache[url]);
     loader.load(url, t => { texCache[url] = t; apply(t); }, undefined, () => notice('Textura no encontrada: ' + url));
@@ -398,12 +402,12 @@ function init(M) {
   const widthMap = new Map();
   const roadWidthAt = d => Math.max(2, 10 - 0.5 * d / 1000);
   scene.add(world);
-  let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0;
+  let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0;
 
   function resetTrack() {
     chunks.forEach(g => { world.remove(g); disposeChunk(g); });
     chunks.clear(); terrMap.clear(); zoneMap.clear(); grid = new Map(); bridges = []; houseCols = []; obsCols = []; widthMap.clear();
-    pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gy = 0; gz = 0;
+    pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gy = 0; gz = 0; gT = 0; gTimer = 0;
     pts.push({ x: 0, y: 0, z: 0, h: 0, b: 0 });
     grid.set('0,0', [0]);
   }
@@ -430,14 +434,21 @@ function init(M) {
   function extend(n) {
     while (pts.length < n) {
       const m = pts.length;
-      gk = clamp(gk * 0.98 + (Math.random() - 0.5) * 0.006, -0.025, 0.025);
+      // Tramos rectos (30-80 puntos) o curvas (20-50 puntos) con curvatura constante y transiciones suaves
+      if (gTimer <= 0) {
+        const straight = Math.random() < 0.4;
+        gT = straight ? 0 : (Math.random() < 0.5 ? -1 : 1) * rnd(0.003, 0.013);
+        gTimer = Math.floor(straight ? rnd(30, 80) : rnd(20, 50));
+      }
+      gTimer--;
+      gk += (gT - gk) * 0.08;
       gh += gk * STEP;
       gslope = clamp(gslope * 0.97 + (Math.random() - 0.5) * 0.03, -0.18, 0.18);
       gy += gslope * STEP;
       gx += Math.sin(gh) * STEP;
       gz += Math.cos(gh) * STEP;
       const b = bridgeHeight(m);
-      const p = { x: gx, y: gy + b, z: gz, h: gh, b };
+      const p = { x: gx, y: gy + b, z: gz, h: gh, b, k: gk };
       pts.push(p);
       checkCross(m);
       const key = Math.floor(p.x / 16) + ',' + Math.floor(p.z / 16);
@@ -514,7 +525,7 @@ function init(M) {
         }
         {
           const a = side * (BAR + 3 + col * 6 + rnd(-1, 1)), q = ptAt(p, a), y = groundY(p, a);
-          const mat = pick(TREE_MATS), w = rnd(6, 11), s = new THREE.Sprite(mat);
+          const mat = pick(TREE_MATS), w = rnd(6, 11) * (mat.userData.size || 1), s = new THREE.Sprite(mat);
           s.scale.set(w, w * mat.userData.aspect, 1);
           s.center.set(0.5, 0);
           s.position.set(q.x, y, q.z);
@@ -820,34 +831,46 @@ function init(M) {
     }
   }
 
-  // Agrupa los tramos donde la pista gira dentro de maxDist (m). ang > 0 = izquierda.
-  function findCurves(maxDist) {
-    const from = Math.floor(S.p) + 1, W = 10, TH = 0.006, out = [];
-    const last = Math.min(pts.length - W - 1, from + Math.floor(maxDist / STEP));
-    let start = -1, quiet = 0;
-    const push = (x, y) => { const ang = pts[y].h - pts[x].h; if (Math.abs(ang) > 0.2) out.push({ start: x, end: y, ang }); };
-    for (let i = from; i <= last && out.length < 3; i++) {
-      if (Math.abs(pts[i + W].h - pts[i].h) / W > TH) { if (start < 0) start = i; quiet = 0; }
-      else if (start >= 0 && ++quiet >= W) { push(start, i - quiet + 1); start = -1; quiet = 0; }
+  // Elementos de aviso por delante: curvas (con sentido y severidad) y peligros (obstáculos), ordenados por distancia.
+  // La curvatura se mide por punto (rad por tramo de 3 m) suavizada en 3 puntos.
+  function findItems(maxDist) {
+    const n = Math.floor(maxDist / STEP), base = Math.floor(S.p);
+    const from = Math.max(1, base - 120), last = Math.min(pts.length - 2, base + n);
+    const kAt = i => pts[i].k || 0;
+    const TH = 0.0025, items = [];
+    let st = -1, dir = 0, quiet = 0, maxK = 0, sum = 0;
+    const close = () => {
+      if (Math.abs(sum) > 0.35) items.push({ kind: 'curve', start: st, ang: sum, maxK });   // ang > 0 = izquierda
+      st = -1; dir = 0; quiet = 0; maxK = 0; sum = 0;
+    };
+    for (let i = from; i <= last; i++) {
+      const k = (kAt(i - 1) + kAt(i) + kAt(i + 1)) / 3;
+      if (Math.abs(k) > TH) {
+        const d = Math.sign(k);
+        if (st >= 0 && d !== dir) close();
+        if (st < 0) { st = i; dir = d; }
+        quiet = 0; maxK = Math.max(maxK, Math.abs(k)); sum += kAt(i) * STEP;
+      } else if (st >= 0 && ++quiet >= 3) close();
     }
-    if (start >= 0 && out.length < 3) push(start, last);
-    return out;
+    if (st >= 0) close();
+    for (const o of obsCols) if (o.i > S.p && o.i - S.p <= n) items.push({ kind: 'obs', start: o.i });
+    return items.sort((x, y) => x.start - y.start);
   }
   function updateTurn() {
-    const cs = findCurves(1200).filter(c => (c.start - S.p) * STEP > 5).slice(0, 2);
-    const ob = obsCols.filter(o => o.i > S.p).sort((a, b) => a.i - b.i)[0], wEl = $('warn');
-    if (ob && (ob.i - S.p) * STEP <= 250) {
-      wEl.textContent = '⚠ ' + Math.max(0, Math.round((ob.i - S.p) * STEP / 10) * 10) + 'm';
-      wEl.classList.remove('hidden');
-    } else wEl.classList.add('hidden');
-    const t1 = $('t1'), t2 = $('t2');
-    const sev = c => { const a = Math.abs(c.ang); return a < 0.5 ? '#7dff9b' : a < 1 ? '#ffd166' : '#ff5a5a'; };
-    const dTxt = c => { const d = Math.max(0, (c.start - S.p) * STEP); return d < 1000 ? Math.round(d / 10) * 10 + 'm' : (d / 1000).toFixed(1) + 'km'; };
-    const label = c => (c.ang > 0 ? '↰ ' + dTxt(c) : dTxt(c) + ' ↱');
-    $('turns').classList.toggle('hidden', cs.length === 0);
-    if (cs.length) { t1.textContent = label(cs[0]); t1.style.color = sev(cs[0]); }
-    t2.classList.toggle('hidden', cs.length < 2);
-    if (cs.length > 1) { t2.textContent = label(cs[1]); t2.style.color = sev(cs[1]); }
+    const items = findItems(1200).filter(it => it.start > S.p);
+    const panel = $('turns'), t1 = $('t1'), t2 = $('t2');
+    const dTxt = it => {
+      const d = Math.max(0, (it.start - S.p) * STEP);
+      return d < 1000 ? Math.round(d / 10) * 10 + 'm' : (d / 1000).toFixed(1) + 'km';
+    };
+    const label = it => it.kind === 'obs' ? '⚠ ' + dTxt(it)
+      : it.ang > 0 ? '↰ ' + dTxt(it) : dTxt(it) + ' ↱';
+    const color = it => it.kind === 'obs' ? '#ff5a5a'
+      : it.maxK < 0.005 ? '#7dff9b' : it.maxK < 0.009 ? '#ffd166' : '#ff5a5a';
+    panel.classList.toggle('hidden', items.length === 0);
+    if (items.length) { t1.textContent = label(items[0]); t1.style.color = color(items[0]); }
+    t2.classList.toggle('hidden', items.length < 2);
+    if (items.length > 1) { t2.textContent = label(items[1]); t2.style.color = color(items[1]); }
   }
 
   // ---------- Nubes ----------

@@ -85,3 +85,9 @@ h1 span{color:var(--acc)}
 
 /* v11: avisos más pequeños en móvil */
 @media (max-width:600px){.turnMain{font-size:40px}.turnSub{font-size:22px}#turns{padding:8px 12px}#warn{font-size:20px;padding:6px 10px}}
+
+/* v12: avisos dimensionados por la altura de la pantalla */
+.turnMain{font-size:clamp(28px,13vh,88px)}
+.turnSub{font-size:clamp(16px,6.5vh,44px)}
+#warn{font-size:clamp(14px,5vh,34px)}
+#turns{padding:clamp(6px,1.5vh,12px) clamp(10px,2vh,22px)}
