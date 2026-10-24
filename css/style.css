@@ -79,3 +79,6 @@ h1 span{color:var(--acc)}
 /* v7: la siguiente curva al 50 % */
 .turnSub{font-size:44px}
 @media (max-width:600px){.turnSub{font-size:30px}}
+
+/* v9: aviso de obstáculos */
+#warn{font-family:"Bitcount Single",monospace;font-size:34px;color:#ffd166;padding:8px 16px;background:rgba(6,14,10,.6);pointer-events:none;text-shadow:0 0 10px currentColor}

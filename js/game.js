@@ -125,12 +125,14 @@ function init(M) {
 
   // Texturas como arrays: cada material escoge una al azar y la aplica al cargarse
   const texCache = {};
+  const REPEAT = { plaster: 3, roof: 3, guardrail: 3, stone: 2, rock: 2, hay: 2, concrete: 2, wave: 2, wheel: 2, log: 2 };
   function bindMap(mat, name) {
     const list = M.textures && M.textures[name];
     const arr = Array.isArray(list) ? list : (list ? [list] : []);
     if (!arr.length) return;
     const url = pick(arr);
-    const apply = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; mat.map = t; mat.needsUpdate = true; };
+    const r = REPEAT[name] || 1;
+    const apply = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(r, r); mat.map = t; mat.needsUpdate = true; };
     if (texCache[url]) return apply(texCache[url]);
     loader.load(url, t => { texCache[url] = t; apply(t); }, undefined, () => notice('Textura no encontrada: ' + url));
   }
@@ -225,10 +227,10 @@ function init(M) {
   function ribbon(list, a, ya, b, yb, mask) {
     const n = list.length, pos = new Float32Array(n * 6), uv = new Float32Array(n * 4), idx = [];
     for (let i = 0; i < n; i++) {
-      const p = list[i], A = ptAt(p, a), B = ptAt(p, b), u = i * STEP / 8;
+      const p = list[i], A = ptAt(p, a), B = ptAt(p, b), u = i * STEP / 4;
       const y1 = typeof ya === 'function' ? ya(i) : ya, y2 = typeof yb === 'function' ? yb(i) : yb;
       pos.set([A.x, p.y + y1, A.z, B.x, p.y + y2, B.z], i * 6);
-      uv.set([u, 0, u, 1], i * 4);
+      uv.set([u, 0, u, Math.hypot(B.x - A.x, B.z - A.z, y2 - y1) / 4], i * 4);
       if (i < n - 1 && !(mask && mask(i))) { const j = i * 2; idx.push(j, j + 2, j + 1, j + 1, j + 2, j + 3); }
     }
     const g = new THREE.BufferGeometry();
@@ -246,7 +248,7 @@ function init(M) {
     for (let i = 0; i < n; i++) for (let j = 0; j < Mn; j++) {
       const p = list[i], a = LAT[j], q = ptAt(p, a), o = i * Mn + j;
       pos.set([q.x, groundY(p, a), q.z], o * 3);
-      uv.set([q.x / 10, q.z / 10], o * 2);
+      uv.set([q.x / 4, q.z / 4], o * 2);
     }
     for (let i = 0; i < n - 1; i++) for (let j = 0; j < Mn - 1; j++) {
       const a = i * Mn + j, b = a + 1, c = a + Mn, d = c + 1;
@@ -313,7 +315,7 @@ function init(M) {
 
   // Obstáculos ocasionales sobre la carretera
   let obsCols = [];
-  function addObstacle(g, p, lat, c) {
+  function addObstacle(g, p, lat, c, gi) {
     const q = ptAt(p, lat), kind = pick(['rock', 'log', 'cone']);
     let mesh, r;
     if (kind === 'rock') {
@@ -331,7 +333,7 @@ function init(M) {
       mesh.position.set(q.x, p.y + 0.45, q.z);
     }
     mesh.userData.own = false; g.add(mesh);
-    obsCols.push({ x: q.x, z: q.z, r, c });
+    obsCols.push({ x: q.x, z: q.z, r, c, i: gi });
   }
 
   // ---------- Muros ----------
@@ -444,8 +446,6 @@ function init(M) {
 
     add(groundMesh(list), TM[t].grass);
     add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), TM[t].road);
-    add(ribbon(list, -ROAD_W / 2 - 0.4, 0.02, -ROAD_W / 2, 0.02), MAT.kerb);
-    add(ribbon(list, ROAD_W / 2, 0.02, ROAD_W / 2 + 0.4, 0.02), MAT.kerb);
     if (t === 0) add(dashes(list), MAT.line);
     // Marcas de neumáticos por tramos, en los dos carriles
     for (const lane of [-ROAD_W * 0.25, ROAD_W * 0.25]) if (Math.random() < 0.5)
@@ -504,7 +504,10 @@ function init(M) {
         }
       }
     }
-    if (Math.random() < 0.12) addObstacle(g, list[Math.floor(rnd(2, CH - 2))], rnd(-ROAD_W / 2 + 0.9, ROAD_W / 2 - 0.9), c);
+    if (Math.random() < 0.12) {
+      const oi = Math.floor(rnd(2, CH - 2));
+      addObstacle(g, list[oi], rnd(-ROAD_W / 2 + 0.9, ROAD_W / 2 - 0.9), c, c * CH + oi);
+    }
     world.add(g);
     chunks.set(c, g);
   }
@@ -529,9 +532,10 @@ function init(M) {
   function terrAt(p) { return TERR[terrMap.get(Math.floor(p / CH)) ?? 0]; }
 
   // ---------- Sonido ----------
-  let audioCtx = null, crashBuf = null;
+  let audioCtx = null, crashBuf = null, eng = null;
   function audio() {
     if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (audioCtx && !eng) initSound(audioCtx);
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
     return audioCtx;
   }
@@ -540,6 +544,54 @@ function init(M) {
       .then(b => audio() && audioCtx.decodeAudioData(b)).then(d => { crashBuf = d; }).catch(() => {});
   }
   // k: intensidad 0..1. Usa el archivo de assets/sounds si existe; si no, ruido sintetizado
+  // Motor: sierra + cuadrada filtradas; cambios de marcha con un chasquido; ruido de terreno según superficie
+  function initSound(ac) {
+    const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    const tn = ac.createBufferSource(); tn.buffer = nb; tn.loop = true;
+    const tf = ac.createBiquadFilter(); tf.type = 'bandpass'; tf.Q.value = 0.8; tf.frequency.value = 400;
+    const tg = ac.createGain(); tg.gain.value = 0;
+    tn.connect(tf); tf.connect(tg); tg.connect(ac.destination); tn.start();
+    const o1 = ac.createOscillator(); o1.type = 'sawtooth'; o1.frequency.value = 40;
+    const o2 = ac.createOscillator(); o2.type = 'square'; o2.frequency.value = 20;
+    const ef = ac.createBiquadFilter(); ef.type = 'lowpass'; ef.frequency.value = 600; ef.Q.value = 2;
+    const eg = ac.createGain(); eg.gain.value = 0;
+    o1.connect(ef); o2.connect(ef); ef.connect(eg); eg.connect(ac.destination);
+    o1.start(); o2.start();
+    eng = { nb, tf, tg, o1, o2, ef, eg, gear: 0 };
+  }
+  function playShift() {
+    const ac = audioCtx; if (!ac || !eng) return;
+    const src = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = eng.nb; bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 1.5;
+    g.gain.setValueAtTime(0.25, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.12);
+    src.connect(bp); bp.connect(g); g.connect(ac.destination);
+    src.start(ac.currentTime, rnd(0, 1), 0.12);
+  }
+  const TSND = {
+    Asfalto: { f: 300, q: 0.5, g: 0.03 },
+    Grava: { f: 1100, q: 0.9, g: 0.22 },
+    Nieve: { f: 450, q: 0.4, g: 0.07 },
+    Barro: { f: 160, q: 1.4, g: 0.2 }
+  };
+  function updateSound() {
+    const ac = audioCtx; if (!ac || !eng) return;
+    const on = S.state === 'playing', t = ac.currentTime, v = Math.abs(S.speed);
+    const gas = on && readInput().gas;
+    const gear = Math.min(5, Math.floor(v / 14) + 1);
+    if (on && eng.gear && gear !== eng.gear) playShift();
+    eng.gear = on ? gear : 0;
+    const rpmN = clamp((v - (gear - 1) * 14) / 14, 0, 1);
+    const f = (900 + rpmN * 4200) / 30;
+    eng.o1.frequency.setTargetAtTime(f, t, 0.05);
+    eng.o2.frequency.setTargetAtTime(f / 2, t, 0.05);
+    eng.ef.frequency.setTargetAtTime(400 + rpmN * 1400 + (gas ? 300 : 0), t, 0.1);
+    eng.eg.gain.setTargetAtTime(on ? 0.04 + 0.1 * (gas ? 1 : 0.4) + 0.04 * rpmN : 0, t, 0.1);
+    const T = TSND[terrAt(S.p).name] || TSND.Asfalto;
+    eng.tf.frequency.setTargetAtTime(T.f * (0.7 + 0.3 * clamp(v / 40, 0, 1)), t, 0.2);
+    eng.tf.Q.setTargetAtTime(T.q, t, 0.2);
+    eng.tg.gain.setTargetAtTime(on ? T.g * clamp(v / 30, 0, 1) : 0, t, 0.2);
+  }
   function playCrash(k) {
     const ac = audio(); if (!ac) return;
     const g = ac.createGain();
@@ -748,6 +800,11 @@ function init(M) {
   }
   function updateTurn() {
     const cs = findCurves(1200).filter(c => c.start > S.p).slice(0, 2);
+    const ob = obsCols.filter(o => o.i > S.p).sort((a, b) => a.i - b.i)[0], wEl = $('warn');
+    if (ob && (ob.i - S.p) * STEP <= 250) {
+      wEl.textContent = '⚠ ' + Math.max(0, Math.round((ob.i - S.p) * STEP / 10) * 10) + 'm';
+      wEl.classList.remove('hidden');
+    } else wEl.classList.add('hidden');
     const t1 = $('t1'), t2 = $('t2');
     const sev = c => { const a = Math.abs(c.ang); return a < 0.5 ? '#7dff9b' : a < 1 ? '#ffd166' : '#ff5a5a'; };
     const dTxt = c => { const d = Math.max(0, (c.start - S.p) * STEP); return d < 1000 ? Math.round(d / 10) * 10 + 'm' : (d / 1000).toFixed(1) + 'km'; };
@@ -799,7 +856,7 @@ function init(M) {
   }
   let last = performance.now();
   function frame(now) {
-    if (S.state === 'over' || S.state === 'paused') { last = now; requestAnimationFrame(frame); return; }
+    if (S.state === 'over' || S.state === 'paused') { updateSound(); last = now; requestAnimationFrame(frame); return; }
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (S.state === 'menu') {
       S.demoT += dt;
@@ -810,6 +867,7 @@ function init(M) {
       physics(dt, { steer: 0, gas: 0, brake: 1 });
     }
 
+    updateSound();
     if (S.state === 'playing') houseCollide();
     updateTrack(S.p);
     placeClouds();
