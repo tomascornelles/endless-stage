@@ -168,7 +168,8 @@ function init(M) {
     snow: new THREE.MeshLambertMaterial({ color: 0xf4f8ff, flatShading: true }),
     pillar: new THREE.MeshLambertMaterial({ color: 0x9aa3ad }),
     log: new THREE.MeshLambertMaterial({ color: 0x6b4a2b }),
-    cone: new THREE.MeshLambertMaterial({ color: 0xff7a1a })
+    cone: new THREE.MeshLambertMaterial({ color: 0xff7a1a }),
+    mountain: new THREE.MeshLambertMaterial({ vertexColors: true })
   };
 
   bindMap(MAT.rock, 'rock'); bindMap(MAT.wave, 'wave'); bindMap(MAT.stone, 'stone');
@@ -192,7 +193,26 @@ function init(M) {
   const HAY = new THREE.CylinderGeometry(0.9, 0.9, 3, 12); HAY.rotateZ(Math.PI / 2);
   const TYRE_G = new THREE.TorusGeometry(0.55, 0.22, 8, 14); TYRE_G.rotateX(Math.PI / 2);
   const CIRCLE = new THREE.CircleGeometry(1, 14);
-  const MOUNT = new THREE.ConeGeometry(1, 1, 8); MOUNT.translate(0, 0.5, 0);
+  const MOUNT = (() => {
+    const g = new THREE.ConeGeometry(1, 1, 28, 10, false);
+    g.translate(0, 0.5, 0);
+    const pos = g.attributes.position, col = new Float32Array(pos.count * 3);
+    const cLow = new THREE.Color(0x4f6b3e), cRock = new THREE.Color(0x7a716a), cSnow = new THREE.Color(0xf2f6fa), tmp = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const n = Math.sin(x * 7.1 + z * 3.3) * 0.5 + Math.sin(x * 13.7 - z * 9.1) * 0.25 + Math.sin(y * 11 + x * 2) * 0.15;
+      const j = 1 + n * 0.18 * (1 - y * 0.6);
+      pos.setXYZ(i, x * j, y + n * 0.04, z * j);
+      const t = clamp(y, 0, 1);
+      if (t < 0.45) tmp.copy(cLow).lerp(cRock, t / 0.45);
+      else if (t < 0.8) tmp.copy(cRock);
+      else tmp.copy(cRock).lerp(cSnow, (t - 0.8) / 0.2);
+      col.set([tmp.r, tmp.g, tmp.b], i * 3);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.computeVertexNormals();
+    return g;
+  })();
   const ROCK_G = new THREE.IcosahedronGeometry(1, 0);
   const LOG_G = new THREE.CylinderGeometry(0.4, 0.4, 2.6, 8); LOG_G.rotateZ(Math.PI / 2);
   const CONE_G = new THREE.ConeGeometry(0.35, 0.9, 8);
@@ -220,8 +240,9 @@ function init(M) {
   // ---------- Relieve y geometría ----------
   function ptAt(p, a) { return { x: p.x - Math.cos(p.h) * a, z: p.z + Math.sin(p.h) * a }; }
   function groundY(p, a) {
-    const q = ptAt(p, a), f = clamp((Math.abs(a) - 11) / 12, 0, 1);
-    return (p.y - p.b - 0.6) + f * f * (3 - 2 * f) * hills(q.x, q.z);
+    const q = ptAt(p, a), f0 = clamp((Math.abs(a) - 11) / 12, 0, 1), f = f0 * f0 * (3 - 2 * f0);
+    const dep = 3.5 * (p.b / BRIDGE_H);
+    return (p.y - p.b - 0.6) - dep * (1 - f) + f * hills(q.x, q.z);
   }
   // Cinta entre dos desplazamientos laterales; ya/yb pueden ser números o funciones del índice
   function ribbon(list, a, ya, b, yb, mask) {
@@ -468,21 +489,18 @@ function init(M) {
       const p = list[i];
       if (p.b > 1) for (const side of [-4, 4]) {
         const q = ptAt(p, side), m = new THREE.Mesh(PILLAR, MAT.pillar);
-        m.scale.set(1, p.b - 0.1, 1);
-        m.position.set(q.x, p.y - p.b / 2 - 0.35, q.z);
+        const dep = 3.5 * (p.b / BRIDGE_H), bottom = p.y - p.b - 0.6 - dep, top = p.y - 0.4;
+        m.scale.set(1, top - bottom, 1);
+        m.position.set(q.x, (top + bottom) / 2, q.z);
         m.userData.own = false; g.add(m);
       }
     }
-    // Montaña lejana con cima nevada
-    if (Math.random() < 0.1) {
-      const side = pick([-1, 1]), q = ptAt(list[10], side * rnd(200, 320)), r = rnd(60, 120), hgt = rnd(80, 180);
-      const m = new THREE.Mesh(MOUNT, MAT.rock);
-      m.scale.set(r, hgt, r); m.position.set(q.x, list[10].y - 10, q.z); m.userData.own = false; g.add(m);
-      if (hgt > 120) {
-        const s = new THREE.Mesh(MOUNT, MAT.snow);
-        s.scale.set(r * 0.35, hgt * 0.3, r * 0.35); s.position.set(q.x, list[10].y - 10 + hgt * 0.7, q.z);
-        s.userData.own = false; g.add(s);
-      }
+    // Montañas lejanas, de siluetas distintas y con rotación aleatoria
+    if (Math.random() < 0.18) {
+      const side = pick([-1, 1]), q = ptAt(list[10], side * rnd(200, 320)), r = rnd(70, 160), hgt = rnd(90, 220);
+      const m = new THREE.Mesh(MOUNT, MAT.mountain);
+      m.scale.set(r, hgt, r); m.position.set(q.x, list[10].y - 10, q.z); m.rotation.y = rnd(0, 6.28);
+      m.userData.own = false; g.add(m);
     }
     // Árboles y casas detrás de las barreras: cuadrícula densa, ~90 % ocupada
     for (let i = 0; i < CH; i += 2) {
@@ -609,7 +627,7 @@ function init(M) {
 
   // ---------- Estado e input ----------
   const S = { mode: 'keys', state: 'menu', p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, time: 60, nextCP: 500, dist: 0, best: load(), demoT: 0, terr: -1, cd: 0, hp: 100 };
-  const keys = {}, touch = { L: 0, R: 0, B: 0, G: 0 }, gyro = { steer: 0 };
+  const keys = {}, touch = { L: 0, R: 0, B: 0, G: 0 }, gyro = { steer: 0, base: null, land: null };
   const KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space'];
   const HINT = {
     keys: 'Flechas o WASD para conducir. Espacio o ↓ para frenar. Esc: menú.',
@@ -627,12 +645,26 @@ function init(M) {
   });
   addEventListener('keyup', e => { keys[e.code] = false; });
   addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+  const gyroStatus = { seen: false };
+  // iOS exige permiso explícito, que debe pedirse dentro de un gesto del usuario (clic)
+  function requestGyro() {
+    gyroStatus.seen = false;
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === 'function') {
+      DOE.requestPermission()
+        .then(r => { if (r !== 'granted') flash('Permiso de sensores denegado: usa otro control.'); })
+        .catch(() => flash('No se pudo acceder al giroscopio.'));
+    }
+  }
   addEventListener('deviceorientation', e => {
-    if (e.gamma == null) return;
+    if (S.mode !== 'gyro' || e.gamma == null) return;
+    gyroStatus.seen = true;
     const angle = (screen.orientation && screen.orientation.angle) || window.orientation || 0;
     const landscape = Math.abs(angle) === 90;
-    const v = landscape ? (e.beta || 0) : (e.gamma || 0);
-    gyro.steer = clamp(v / 25, -1, 1);
+    const raw = landscape ? (angle === 90 ? (e.beta || 0) : -(e.beta || 0)) : (e.gamma || 0);
+    if (gyro.land !== landscape) { gyro.land = landscape; gyro.base = null; }
+    if (gyro.base === null) gyro.base = raw;   // calibración: la posición al empezar es el centro
+    gyro.steer = clamp((raw - gyro.base) / 25, -1, 1);
   });
   addEventListener('contextmenu', e => e.preventDefault());
 
@@ -646,6 +678,7 @@ function init(M) {
   }
   function setMode(m) {
     S.mode = m;
+    if (m === 'gyro') requestGyro();
     document.querySelectorAll('[data-m]').forEach(x => x.classList.toggle('on', x.dataset.m === m));
     $('hint').textContent = HINT[m];
     $('touch').dataset.m = m;
@@ -676,8 +709,10 @@ function init(M) {
   }
   function start() {
     audio();
-    if (S.mode === 'gyro' && window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) {
-      DeviceOrientationEvent.requestPermission().catch(() => {});
+    if (S.mode === 'gyro') {
+      requestGyro();
+      gyro.base = null; gyro.steer = 0;
+      setTimeout(() => { if (!gyroStatus.seen) flash('Sin datos del giroscopio: prueba el control táctil'); }, 2000);
     }
     try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
     try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
@@ -799,7 +834,7 @@ function init(M) {
     return out;
   }
   function updateTurn() {
-    const cs = findCurves(1200).filter(c => c.start > S.p).slice(0, 2);
+    const cs = findCurves(1200).filter(c => (c.start - S.p) * STEP > 5).slice(0, 2);
     const ob = obsCols.filter(o => o.i > S.p).sort((a, b) => a.i - b.i)[0], wEl = $('warn');
     if (ob && (ob.i - S.p) * STEP <= 250) {
       wEl.textContent = '⚠ ' + Math.max(0, Math.round((ob.i - S.p) * STEP / 10) * 10) + 'm';
