@@ -10,25 +10,24 @@
       "assets/textures/asphalt2.jpg"
     ],
     "rock": [
-      "assets/textures/rock.png"
+      "assets/textures/rock.jpg"
     ],
     "stone": [
       "assets/textures/stone-wall.png"
     ],
     "hay": [
-      "assets/textures/hay.png"
+      "assets/textures/hay.png",
+      "assets/textures/hay2.jpg"
     ],
     "concrete": [
       "assets/textures/concrete.png"
     ],
     "plaster": [
-      "assets/textures/plaster1.png"
     ],
     "roof": [
-      "assets/textures/roof_tiles.png"
+    	"assets/houses/roof2.jpg"
     ],
     "tire": [
-      "assets/textures/tire_mark.png"
     ],
     "snow": [
       "assets/textures/snow.png"
@@ -37,17 +36,18 @@
       "assets/textures/guardrail.jpg"
     ],
     "wave": [
-      "assets/textures/wave_wall.png"
+      "assets/textures/stripes.jpg"
     ],
     "wheel": [
-      "assets/textures/wheel.png"
+      "assets/textures/tires.png",
+      "assets/textures/tires2.png"
     ],
     "log": [
       "assets/obstacles/wood.jpg",
       "assets/obstacles/log.jpg"
     ],
     "cone": [
-      "assets/obstacles/cone.png"
+      "assets/obstacles/cone.jpg"
     ]
   },
   "trees": [
@@ -89,10 +89,10 @@
     "tire": 1,
     "snow": 1,
     "guardrail": 1,
-    "wave": 1,
+    "wave": 0.5,
     "wheel": 1,
     "log": 1,
-    "cone": 1,
+    "cone": 0.5,
     "trees": 1,
     "houseWalls": 1,
     "houseRoofs": 1

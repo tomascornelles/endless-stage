@@ -91,3 +91,8 @@ h1 span{color:var(--acc)}
 .turnSub{font-size:clamp(16px,6.5vh,44px)}
 #warn{font-size:clamp(14px,5vh,34px)}
 #turns{padding:clamp(6px,1.5vh,12px) clamp(10px,2vh,22px)}
+
+/* v15: sensibilidad, récord y aviso no bloqueante */
+.sensInput{width:100%;accent-color:#7cf5ff}
+#toast{position:fixed;top:calc(96px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:7;padding:6px 16px;border-radius:999px;background:rgba(6,14,10,.7);color:#7dff9b;font-family:"Bitcount Single",monospace;font-size:clamp(14px,4vh,20px);pointer-events:none;white-space:nowrap;transition:opacity .4s}
+#toast.hidden{display:none!important}

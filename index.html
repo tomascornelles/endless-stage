@@ -58,6 +58,7 @@
   <div class="hudRight"><button id="pauseBtn" class="glass" aria-label="Menú">☰</button></div>
 </div>
 <div id="flash"></div>
+<div id="toast" class="hidden"></div>
 
 <div id="touch" class="hidden" data-m="touch">
   <div class="zone" data-c="L">◀</div>
@@ -76,6 +77,9 @@
       <button class="chip" data-m="gyro">Giroscopio</button>
       <button class="chip" data-m="touch">Táctil</button>
     </div>
+    <div class="label">Sensibilidad de giro</div>
+    <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
+    <p class="sub" id="bestMenu"></p>
     <p class="sub" id="hint"></p>
     <button class="primary" id="go">Empezar carrera</button>
     <p class="sub hidden" id="notice" style="color:#ffd166;white-space:pre-line"></p>
@@ -93,6 +97,8 @@
       <button class="chip" data-m="gyro">Giroscopio</button>
       <button class="chip" data-m="touch">Táctil</button>
     </div>
+    <div class="label">Sensibilidad de giro</div>
+    <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
     <button class="primary" id="resume">Continuar</button>
     <button class="chip" id="quit">Salir al menú</button>
   </div>

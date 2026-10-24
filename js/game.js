@@ -30,6 +30,10 @@ fetch('assets/manifest.json')
 function init(M) {
   const DS = THREE.DoubleSide;
   const loader = new THREE.TextureLoader();
+  const texCache = {};
+  const REPEAT = { plaster: 3, roof: 3, guardrail: 3, stone: 2, rock: 2, hay: 2, concrete: 2, wave: 2, wheel: 2, log: 2 };
+  // Repetición final = base × ajuste de M.repeat (manifiesto)
+  const rep = name => ((REPEAT[name] || 1) / 0.3) * ((M.repeat && M.repeat[name]) || 1);
 
   // ---------- Texturas ----------
   function canvasTex(w, h, draw, rep = [1, 1]) {
@@ -120,16 +124,14 @@ function init(M) {
   // Casas: paredes y tejados de PNG (M.houseWalls / M.houseRoofs) más tintes procedurales
   const WALL_MATS = [0xf2e6d0, 0xd9a77b, 0xa8c3d6, 0xe0d28a, 0xc9b8e6, 0xf0c0b0]
     .map(c => new THREE.MeshLambertMaterial({ map: TX.plaster, color: c, side: DS }))
+    .concat(pool('plaster', THREE.MeshLambertMaterial, { map: TX.plaster, side: DS }))
     .concat((M.houseWalls || []).map(u => new THREE.MeshLambertMaterial({ map: sizedTex(ext(u, canvasTex(128, 128, noise('#d0c8b8', '90,80,70', 0.4))), M.repeat && M.repeat.houseWalls), side: DS })));
   const ROOF_MATS = [0x8a3b2a, 0x3d4a5c, 0x6b5744, 0x2e5a6b]
     .map(c => new THREE.MeshLambertMaterial({ map: TX.roof, color: c, side: DS }))
+    .concat(pool('roof', THREE.MeshLambertMaterial, { map: TX.roof, side: DS }))
     .concat((M.houseRoofs || []).map(u => new THREE.MeshLambertMaterial({ map: sizedTex(ext(u, canvasTex(128, 128, tileDraw)), M.repeat && M.repeat.houseRoofs), side: DS })));
 
   // Texturas como arrays: cada material escoge una al azar y la aplica al cargarse
-  const texCache = {};
-  const REPEAT = { plaster: 3, roof: 3, guardrail: 3, stone: 2, rock: 2, hay: 2, concrete: 2, wave: 2, wheel: 2, log: 2 };
-  // Repetición final = base × ajuste de M.repeat (manifiesto)
-  const rep = name => ((REPEAT[name] || 1) / 0.3) * ((M.repeat && M.repeat[name]) || 1);
   function bindMap(mat, name) {
     const list = M.textures && M.textures[name];
     const arr = Array.isArray(list) ? list : (list ? [list] : []);
@@ -140,45 +142,48 @@ function init(M) {
     if (texCache[url]) return apply(texCache[url]);
     loader.load(url, t => { texCache[url] = t; apply(t); }, undefined, () => notice('Textura no encontrada: ' + url));
   }
-  WALL_MATS.slice(0, 6).forEach(m => bindMap(m, 'plaster'));
-  ROOF_MATS.slice(0, 4).forEach(m => bindMap(m, 'roof'));
 
+  // Pool: un material por textura del manifiesto; cada elemento escoge uno al azar
+  function urlsOf(name) { const l = M.textures && M.textures[name]; return Array.isArray(l) ? l : (l ? [l] : []); }
+  function loadInto(mat, url, name) {
+    const r = rep(name);
+    const apply = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(r, r); mat.map = t; mat.needsUpdate = true; };
+    if (texCache[url]) return apply(texCache[url]);
+    loader.load(url, t => { texCache[url] = t; apply(t); }, undefined, () => notice('Textura no encontrada: ' + url));
+  }
+  function pool(name, Cls, opts) {
+    const urls = urlsOf(name);
+    if (!urls.length) return [new Cls(Object.assign({}, opts))];
+    return urls.map(u => { const m = new Cls(Object.assign({}, opts)); loadInto(m, u, name); return m; });
+  }
   const TM = TERR.map(t => {
     const snow = t.name === 'Nieve';
     return {
-      road: new THREE.MeshLambertMaterial({ map: snow ? TX.snow : TX.asphalt, color: t.road, side: DS, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
-      grass: new THREE.MeshLambertMaterial({ map: snow ? TX.snow : TX.grass, color: t.grass, side: DS, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+      road: pool(snow ? 'snow' : 'asphalt', THREE.MeshLambertMaterial, { map: snow ? TX.snow : TX.asphalt, color: t.road, side: DS, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      grass: pool(snow ? 'snow' : 'grass', THREE.MeshLambertMaterial, { map: snow ? TX.snow : TX.grass, color: t.grass, side: DS, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
     };
-  });
-  TM.forEach((m, i) => {
-    const sn = TERR[i].name === 'Nieve';
-    bindMap(m.road, sn ? 'snow' : 'asphalt');
-    bindMap(m.grass, sn ? 'snow' : 'grass');
   });
   const MAT = {
     line: new THREE.MeshLambertMaterial({ color: 0xfafafa, side: DS }),
     kerb: new THREE.MeshLambertMaterial({ color: 0xff4d4d, side: DS }),
-    rail: new THREE.MeshLambertMaterial({ color: 0xdfe6f0, side: DS }),
+    rail: pool('guardrail', THREE.MeshLambertMaterial, { color: 0xdfe6f0, side: DS }),
     post: new THREE.MeshLambertMaterial({ color: 0x6b7380 }),
-    wave: new THREE.MeshLambertMaterial({ map: TX.concrete, side: DS }),
-    stone: new THREE.MeshLambertMaterial({ map: TX.stone, side: DS }),
-    hay: new THREE.MeshLambertMaterial({ map: TX.hay }),
-    tyre: new THREE.MeshLambertMaterial({ color: 0x1a1a1a }),
-    tireMark: new THREE.MeshBasicMaterial({ map: TX.tire, color: 0x000000, transparent: true, depthWrite: false, side: DS, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
+    wave: pool('wave', THREE.MeshLambertMaterial, { map: TX.concrete, color: 0xffffff, side: DS }),
+    stone: pool('stone', THREE.MeshLambertMaterial, { map: TX.stone, side: DS }),
+    hay: pool('hay', THREE.MeshLambertMaterial, { map: TX.hay }),
+    tyre: pool('wheel', THREE.MeshLambertMaterial, { color: 0xcfcfcf }),
+    tireMark: pool('tire', THREE.MeshBasicMaterial, { map: TX.tire, color: 0xffffff, transparent: true, depthWrite: false, side: DS, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     tireMarkSnow: new THREE.MeshBasicMaterial({ map: TX.tireSnow, color: 0xffffff, transparent: true, depthWrite: false, side: DS, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     pothole: new THREE.MeshLambertMaterial({ color: 0x1d1d1d }),
     puddle: new THREE.MeshPhongMaterial({ color: 0x2c4f6e, transparent: true, opacity: 0.75, shininess: 140, side: DS }),
-    rock: new THREE.MeshLambertMaterial({ map: TX.rock, flatShading: true }),
+    rock: pool('rock', THREE.MeshLambertMaterial, { map: TX.rock, flatShading: true }),
     snow: new THREE.MeshLambertMaterial({ color: 0xf4f8ff, flatShading: true }),
     pillar: new THREE.MeshLambertMaterial({ color: 0x9aa3ad }),
-    log: new THREE.MeshLambertMaterial({ color: 0x6b4a2b }),
-    cone: new THREE.MeshLambertMaterial({ color: 0xff7a1a }),
+    log: pool('log', THREE.MeshLambertMaterial, { map: canvasTex(64, 64, noise('#6b4a2b', '40,25,10', 0.6)) }),
+    cone: pool('cone', THREE.MeshLambertMaterial, { color: 0xff7a1a }),
     mountain: new THREE.MeshLambertMaterial({ vertexColors: true })
   };
 
-  bindMap(MAT.rock, 'rock'); bindMap(MAT.wave, 'wave'); bindMap(MAT.stone, 'stone');
-  bindMap(MAT.hay, 'hay'); bindMap(MAT.tireMark, 'tire');
-  bindMap(MAT.rail, 'guardrail'); bindMap(MAT.tyre, 'wheel'); bindMap(MAT.log, 'log'); bindMap(MAT.cone, 'cone');
 
   // Geometrías compartidas (no se eliminan al descargar un tramo)
   const BOX = new THREE.BoxGeometry(1, 1, 1); BOX.translate(0, 0.5, 0);
@@ -345,16 +350,16 @@ function init(M) {
     let mesh, r;
     if (kind === 'rock') {
       r = rnd(0.6, 1.1);
-      mesh = new THREE.Mesh(ROCK_G, MAT.rock);
+      mesh = new THREE.Mesh(ROCK_G, pick(MAT.rock));
       mesh.scale.setScalar(r); mesh.position.set(q.x, p.y + r * 0.5, q.z);
       mesh.rotation.set(rnd(0, 3), rnd(0, 3), 0);
     } else if (kind === 'log') {
       r = 1.3;
-      mesh = new THREE.Mesh(LOG_G, MAT.log);
+      mesh = new THREE.Mesh(LOG_G, pick(MAT.log));
       mesh.position.set(q.x, p.y + 0.4, q.z); mesh.rotation.y = p.h - Math.PI / 2;
     } else {
       r = 0.4;
-      mesh = new THREE.Mesh(CONE_G, MAT.cone);
+      mesh = new THREE.Mesh(CONE_G, pick(MAT.cone));
       mesh.position.set(q.x, p.y + 0.45, q.z);
     }
     mesh.userData.own = false; g.add(mesh);
@@ -366,19 +371,19 @@ function init(M) {
     const a = sgn * BAR;
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
     if (type === 'rail') {
-      add(ribbon(list, a, 0.3, a, 1.0), MAT.rail);
+      add(ribbon(list, a, 0.3, a, 1.0), pick(MAT.rail));
       for (let i = 0; i < list.length; i += 4) {
         const q = ptAt(list[i], a), m = new THREE.Mesh(POST, MAT.post);
         m.position.set(q.x, list[i].y, q.z); m.userData.own = false; g.add(m);
       }
     } else if (type === 'wave') {
-      add(ribbon(list, a, 0.2, a + sgn * 0.6, i => 0.7 + 0.35 * Math.sin(i * 0.7)), MAT.wave);
+      add(ribbon(list, a, 0.2, a + sgn * 0.6, i => 0.7 + 0.35 * Math.sin(i * 0.7)), pick(MAT.wave));
     } else if (type === 'stone') {
-      add(ribbon(list, a, 0, a, 1.2), MAT.stone);
-      add(ribbon(list, a, 1.2, a + sgn * 0.4, 1.2), MAT.stone);
+      add(ribbon(list, a, 0, a, 1.2), pick(MAT.stone));
+      add(ribbon(list, a, 1.2, a + sgn * 0.4, 1.2), pick(MAT.stone));
     } else if (type === 'hay') {
       for (let i = 0; i < list.length - 1; i++) {
-        const p = list[i], q = ptAt(p, a + sgn * 0.9), m = new THREE.Mesh(HAY, MAT.hay);
+        const p = list[i], q = ptAt(p, a + sgn * 0.9), m = new THREE.Mesh(HAY, pick(MAT.hay));
         m.position.set(q.x, p.y + 0.9, q.z); m.rotation.y = p.h - Math.PI / 2; m.userData.own = false; g.add(m);
       }
     } else if (type === 'tyre') {
@@ -388,11 +393,16 @@ function init(M) {
         for (let h = 0; h < n; h++) slots.push({ x: q.x + Math.sin(p.h) * k, y: p.y + 0.2 + h * 0.4, z: q.z + Math.cos(p.h) * k });
       }
       if (!slots.length) return;
-      const inst = new THREE.InstancedMesh(TYRE_G, MAT.tyre, slots.length);
-      const dm = new THREE.Object3D();
-      slots.forEach((sl, j) => { dm.position.set(sl.x, sl.y, sl.z); dm.updateMatrix(); inst.setMatrixAt(j, dm.matrix); });
-      inst.instanceMatrix.needsUpdate = true;
-      inst.userData.own = false; g.add(inst);
+      const mats = MAT.tyre, buckets = mats.map(() => []);
+      for (const sl of slots) buckets[Math.floor(Math.random() * mats.length)].push(sl);
+      buckets.forEach((bk, bi) => {
+        if (!bk.length) return;
+        const inst = new THREE.InstancedMesh(TYRE_G, mats[bi], bk.length);
+        const dm = new THREE.Object3D();
+        bk.forEach((sl, j) => { dm.position.set(sl.x, sl.y, sl.z); dm.updateMatrix(); inst.setMatrixAt(j, dm.matrix); });
+        inst.instanceMatrix.needsUpdate = true;
+        inst.userData.own = false; g.add(inst);
+      });
     }
   }
 
@@ -402,12 +412,12 @@ function init(M) {
   const widthMap = new Map();
   const roadWidthAt = d => Math.max(2, 10 - 0.5 * d / 1000);
   scene.add(world);
-  let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0;
+  let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0, segQueue = [];
 
   function resetTrack() {
     chunks.forEach(g => { world.remove(g); disposeChunk(g); });
     chunks.clear(); terrMap.clear(); zoneMap.clear(); grid = new Map(); bridges = []; houseCols = []; obsCols = []; widthMap.clear();
-    pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gy = 0; gz = 0; gT = 0; gTimer = 0;
+    pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gy = 0; gz = 0; gT = 0; gTimer = 0; segQueue = [];
     pts.push({ x: 0, y: 0, z: 0, h: 0, b: 0 });
     grid.set('0,0', [0]);
   }
@@ -431,17 +441,38 @@ function init(M) {
       }
     }
   }
+  // Patrones: recta, curva, chicane (dos curvas opuestas casi seguidas) o curvas enlazadas
+  function buildPattern() {
+    const sgn = () => (Math.random() < 0.5 ? -1 : 1);
+    const seg = (k, n) => segQueue.push({ k, n: Math.floor(n) });
+    const r = Math.random();
+    if (r < 0.2) seg(0, rnd(30, 70));
+    else if (r < 0.5) seg(sgn() * rnd(0.01, 0.02), rnd(12, 30));
+    else if (r < 0.75) {
+      const k = sgn() * rnd(0.016, 0.024);
+      seg(k, rnd(8, 12)); seg(0, 3); seg(-k, rnd(8, 12)); seg(0, rnd(20, 40));
+    } else {
+      let d = sgn();
+      const count = Math.floor(rnd(2, 4));
+      for (let j = 0; j < count; j++) {
+        seg(d * rnd(0.012, 0.02), rnd(10, 22));
+        seg(0, rnd(4, 9));
+        if (Math.random() < 0.4) d = -d;
+      }
+      seg(0, rnd(30, 60));
+    }
+  }
   function extend(n) {
     while (pts.length < n) {
       const m = pts.length;
-      // Tramos rectos (30-80 puntos) o curvas (20-50 puntos) con curvatura constante y transiciones suaves
+      // Cada segmento: curvatura objetivo (rad/m) y longitud en puntos
       if (gTimer <= 0) {
-        const straight = Math.random() < 0.4;
-        gT = straight ? 0 : (Math.random() < 0.5 ? -1 : 1) * rnd(0.003, 0.013);
-        gTimer = Math.floor(straight ? rnd(30, 80) : rnd(20, 50));
+        if (!segQueue.length) buildPattern();
+        const sg = segQueue.shift();
+        gT = sg.k; gTimer = sg.n;
       }
       gTimer--;
-      gk += (gT - gk) * 0.08;
+      gk += (gT - gk) * 0.15;
       gh += gk * STEP;
       gslope = clamp(gslope * 0.97 + (Math.random() - 0.5) * 0.03, -0.18, 0.18);
       gy += gslope * STEP;
@@ -476,12 +507,12 @@ function init(M) {
     const g = new THREE.Group();
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
 
-    add(groundMesh(list), TM[t].grass);
-    add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), TM[t].road);
+    add(groundMesh(list), pick(TM[t].grass));
+    add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), pick(TM[t].road));
     if (t === 0) add(dashes(list), MAT.line);
     // Marcas de neumáticos por tramos, en los dos carriles
     for (const lane of [-ROAD_W * 0.25, ROAD_W * 0.25]) if (Math.random() < 0.5)
-      add(ribbon(list, lane - 0.6, 0.035, lane + 0.6, 0.035, i => ((i >> 3) & 1) === 0), t === 2 ? MAT.tireMarkSnow : MAT.tireMark);
+      add(ribbon(list, lane - 0.6, 0.035, lane + 0.6, 0.035, i => ((i >> 3) & 1) === 0), t === 2 ? MAT.tireMarkSnow : pick(MAT.tireMark));
     // Baches y charcos
     for (let i = 0; i < CH; i += 2) if (t !== 2 && Math.random() < 0.08) {
       const q = ptAt(list[i], rnd(-3.2, 3.2)), m = new THREE.Mesh(CIRCLE, MAT.pothole);
@@ -647,6 +678,13 @@ function init(M) {
   };
   function load() { try { return +localStorage.getItem('endless_stage_best') || 0; } catch (e) { return 0; } }
   function saveBest() { try { localStorage.setItem('endless_stage_best', String(S.best)); } catch (e) {} }
+  function loadSens() { try { return +localStorage.getItem('endless_stage_sens') || 1; } catch (e) { return 1; } }
+  function setSens(v) {
+    S.sens = clamp(v, 0.5, 2);
+    try { localStorage.setItem('endless_stage_sens', String(S.sens)); } catch (e) {}
+    document.querySelectorAll('.sensInput').forEach(i => { i.value = S.sens; });
+  }
+  document.querySelectorAll('.sensInput').forEach(i => i.addEventListener('input', () => setSens(+i.value)));
 
   addEventListener('keydown', e => {
     if (KEYS.includes(e.code)) e.preventDefault();
@@ -706,6 +744,7 @@ function init(M) {
   // ---------- Flujo de juego ----------
   function sync() {
     const st = S.state;
+    $('bestMenu').textContent = 'Récord: ' + (S.best / 1000).toFixed(2) + ' km';
     const inMenu = st === 'menu';
     $('c').style.display = inMenu ? 'none' : 'block';
     const menuEl = $('menu');
@@ -728,7 +767,7 @@ function init(M) {
     try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
     try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
     resetTrack();
-    Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, time: 60, nextCP: 500, dist: 0, state: 'playing', terr: -1, cd: 0, hp: 100, cam: null });
+    Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, time: 60, nextCP: 500, dist: 0, state: 'playing', terr: -1, cd: 0, hp: 100, cam: null, prevBest: S.best, beat: false });
     updateTrack(0);
     sync();
   }
@@ -749,6 +788,13 @@ function init(M) {
     updateTrack(0);
     Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, dist: 0, terr: -1, cam: null });
     sync();
+  }
+  let toastT = null;
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => t.classList.add('hidden'), 2500);
   }
   function flash(msg) {
     const f = $('flash'); f.textContent = msg; f.style.opacity = 1;
@@ -780,9 +826,9 @@ function init(M) {
     const c = sample(S.p);
     S.steer += (inp.steer - S.steer) * Math.min(1, dt * 7);
     const gr = 1 - (1 - T.grip) * clamp(S.speed / 35, 0, 1);
-    const turn = S.steer * 1.4 * gr * Math.min(1, S.speed / 12);
+    const turn = S.steer * 2.2 * S.sens * gr * Math.min(1, S.speed / 12);
     S.rel += (turn + c.k * S.speed - S.rel * 0.12 * gr) * dt;
-    S.rel = clamp(S.rel, -1.2, 1.2);
+    S.rel = clamp(S.rel, -1.5, 1.5);
     S.lat += S.speed * Math.sin(S.rel) * dt;
     const vx = S.speed * Math.cos(S.rel) * dt;
 
@@ -866,7 +912,7 @@ function init(M) {
     const label = it => it.kind === 'obs' ? '⚠ ' + dTxt(it)
       : it.ang > 0 ? '↰ ' + dTxt(it) : dTxt(it) + ' ↱';
     const color = it => it.kind === 'obs' ? '#ff5a5a'
-      : it.maxK < 0.005 ? '#7dff9b' : it.maxK < 0.009 ? '#ffd166' : '#ff5a5a';
+      : it.maxK < 0.01 ? '#7dff9b' : it.maxK < 0.016 ? '#ffd166' : '#ff5a5a';
     panel.classList.toggle('hidden', items.length === 0);
     if (items.length) { t1.textContent = label(items[0]); t1.style.color = color(items[0]); }
     t2.classList.toggle('hidden', items.length < 2);
@@ -905,6 +951,7 @@ function init(M) {
   // ---------- Bucle ----------
   resetTrack();
   updateTrack(0);
+  setSens(loadSens());
   setMode('keys');
   sync();
   {
@@ -949,6 +996,14 @@ function init(M) {
       $('spd').textContent = Math.round(S.speed * 3.6);
       $('spd').nextElementSibling.textContent = S.speed < -0.5 ? 'km/h · R' : 'km/h';
       $('dst').textContent = (S.dist / 1000).toFixed(2);
+      if (S.state === 'playing' && !S.beat && S.prevBest > 0 && S.dist > S.prevBest) {
+        S.beat = true;
+        toast('¡Nuevo récord! ' + (S.dist / 1000).toFixed(2) + ' km');
+      }
+      if (S.dist > S.best) {
+        S.best = S.dist;
+        if (Math.floor(S.dist / 500) !== S.lastSave) { S.lastSave = Math.floor(S.dist / 500); saveBest(); }
+      }
       $('hpBar').style.width = S.hp + '%';
       updateTurn();
     }
