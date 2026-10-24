@@ -27,4 +27,3 @@ npm test         # tests unitarios, de servidor y de proyecto (node --test)
 
 ## Despliegue
 Netlify publica la carpeta raíz tal cual, sin build.
-# endless-stage

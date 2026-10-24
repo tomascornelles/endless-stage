@@ -1,0 +1,74 @@
+{
+  "_info": "Pon tus PNG en las carpetas indicadas. Si un archivo no existe, se usa una textura procedural. Cada valor es una lista: se escoge una al azar.",
+  "textures": {
+    "grass": [
+      "assets/textures/grass.jpg"
+    ],
+    "asphalt": [
+      "assets/textures/asphalt1.jpg",
+      "assets/textures/asphalt2.jpg",
+      "assets/textures/asphalt2.jpg"
+    ],
+    "rock": [
+      "assets/textures/rock.png"
+    ],
+    "stone": [
+      "assets/textures/stone_wall.png"
+    ],
+    "hay": [
+      "assets/textures/hay.png"
+    ],
+    "concrete": [
+      "assets/textures/concrete.png"
+    ],
+    "plaster": [
+      "assets/textures/plaster.png"
+    ],
+    "roof": [
+      "assets/textures/roof_tiles.png"
+    ],
+    "tire": [
+      "assets/textures/tire_mark.png"
+    ],
+    "snow": [
+      "assets/textures/snow.jpg"
+    ],
+    "guardrail": [
+      "assets/textures/guardrail.png"
+    ],
+    "wave": [
+      "assets/textures/wave_wall.png"
+    ],
+    "wheel": [
+      "assets/textures/wheel.png"
+    ],
+    "log": [
+      "assets/obstacles/log.png"
+    ],
+    "cone": [
+      "assets/obstacles/cone.png"
+    ]
+  },
+  "trees": [
+    "assets/trees/tree1.png",
+    "assets/trees/tree2.png",
+    "assets/trees/tree3.png",
+    "assets/trees/tree4.png",
+    "assets/trees/tree5.png",
+    "assets/trees/tree6.png"
+  ],
+  "houseWalls": [
+    "assets/houses/bricks1.png",
+    "assets/houses/bricks2.jpg",
+    "assets/houses/bricks3.jpg",
+    "assets/houses/bricks4.png",
+    "assets/houses/bricks5.png"
+  ],
+  "houseRoofs": [
+    "assets/houses/roof_slate.png"
+  ],
+  "menuImage": "assets/menu.png",
+  "sounds": {
+    "crash": "assets/sounds/crash.wav"
+  }
+}

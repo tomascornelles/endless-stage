@@ -7,10 +7,15 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "deploy": "npx -y netlify-cli deploy --prod --dir .",
+    "deploy:preview": "netlify deploy --dir . --site 6fbe66f8-ec7b-4d8b-8f5d-6baa6b727f3f"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "netlify-cli": "^17.0.0"
+  }
 }

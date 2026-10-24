@@ -20,6 +20,9 @@
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bitcount+Single&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Endless Stage">
@@ -42,16 +45,17 @@
 <canvas id="c"></canvas>
 
 <div id="hud" class="hidden">
-  <div class="panel glass">
-    <div class="label">Velocidad</div>
-    <div class="big"><span id="spd">0</span><small>km/h</small></div>
-    <div class="label" style="margin-top:6px"><span id="terr">Asfalto</span></div>
+  <div class="lcd">
+    <div class="lbl">Velocidad</div>
+    <div class="dig"><span id="spd">0</span><small>km/h</small></div>
+    <div class="lbl">Distancia</div>
+    <div class="dig dist"><span id="dst">0.00</span><small>km</small></div>
+    <div class="bar"><i id="hpBar"></i></div>
   </div>
-  <button id="pauseBtn" class="glass" aria-label="Menú">☰</button>
-  <div class="panel glass r">
-    <div><div class="label">Tiempo</div><div class="mid" id="tm">1:00</div></div>
-    <div><div class="label">Distancia</div><div class="mid" id="dst">0.00 km</div></div>
+  <div class="hudCenter">
+    <div id="turns" class="glass"><div id="t1" class="turnMain">—</div><div id="t2" class="turnSub">—</div></div>
   </div>
+  <div class="hudRight"><button id="pauseBtn" class="glass" aria-label="Menú">☰</button></div>
 </div>
 <div id="flash"></div>
 
@@ -65,7 +69,7 @@
 <div id="menu" class="overlay">
   <div class="card glass">
     <div><div class="label">Simulación de rally</div><h1>Endless <span>Stage</span></h1></div>
-    <p class="sub">Una pista sin fin que se genera mientras conduces. Cada 500 m ganas 12 segundos extra. Colinas, puentes, pueblos y bosques, con asfalto, grava, nieve y barro.</p>
+    <p class="sub">Una pista sin fin que se genera mientras conduces. Cada choque daña el coche: sobrevive la mayor distancia. Colinas, puentes, pueblos y bosques, con asfalto, grava, nieve y barro.</p>
     <div class="label">Controles</div>
     <div class="seg">
       <button class="chip on" data-m="keys">Teclado</button>
@@ -74,6 +78,7 @@
     </div>
     <p class="sub" id="hint"></p>
     <button class="primary" id="go">Empezar carrera</button>
+    <p class="sub hidden" id="notice" style="color:#ffd166;white-space:pre-line"></p>
     <p class="sub">Para instalarla: en Chrome o Edge usa el icono de instalar de la barra de direcciones. En iPhone o Android, «Añadir a pantalla de inicio».</p>
   </div>
 </div>

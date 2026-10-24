@@ -1,7 +1,9 @@
-// Endless Stage · Service Worker: precache del shell y caché de recursos del CDN
-const VERSION = 'endless-stage-v1';
+// Endless Stage · Service Worker
+// Mismos archivos propios: red primero (para recibir cambios) y caché como respaldo offline.
+// CDN de Three.js: caché primero (versión fija).
+const VERSION = 'endless-stage-v2';
 const CORE = [
-  './', 'index.html', 'css/style.css', 'js/game.js', 'manifest.webmanifest', 'favicon.svg',
+  './', 'index.html', 'css/style.css', 'js/core.js', 'js/game.js', 'manifest.webmanifest', 'favicon.svg',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png'
 ];
@@ -22,23 +24,23 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // Navegación: red primero, con respaldo offline
-  if (req.mode === 'navigate') {
+  // Navegación y recursos propios: red primero, caché si no hay conexión
+  if (req.mode === 'navigate' || url.origin === location.origin) {
     e.respondWith(
       fetch(req)
-        .then(r => { const cp = r.clone(); caches.open(VERSION).then(c => c.put('index.html', cp)); return r; })
-        .catch(() => caches.match('index.html'))
+        .then(r => {
+          if (r && r.ok) { const cp = r.clone(); caches.open(VERSION).then(c => c.put(req, cp)); }
+          return r;
+        })
+        .catch(() => caches.match(req).then(hit => hit || caches.match('index.html')))
     );
     return;
   }
-  // Recursos propios y del CDN: caché primero
-  if (url.origin === location.origin || req.url.startsWith(CDN)) {
+  // Three.js y otros recursos del CDN: caché primero
+  if (req.url.startsWith(CDN)) {
     e.respondWith(
       caches.match(req).then(hit => hit || fetch(req).then(r => {
-        if (r && (r.ok || r.type === 'opaque')) {
-          const cp = r.clone();
-          caches.open(VERSION).then(c => c.put(req, cp));
-        }
+        if (r && (r.ok || r.type === 'opaque')) { const cp = r.clone(); caches.open(VERSION).then(c => c.put(req, cp)); }
         return r;
       }))
     );

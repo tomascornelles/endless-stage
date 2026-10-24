@@ -1,0 +1,6 @@
+node_modules
+tests
+.netlify
+*.zip
+README.md
+.netlifyignore
