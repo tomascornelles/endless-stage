@@ -117,7 +117,7 @@ function init(M) {
   // Árboles: PNG de assets/trees (uno al azar por árbol) o dos sprites procedurales
   function spriteMat(url, kind) {
     const fb = canvasTex(64, 128, kind === 'pine' ? pineDraw : roundDraw);
-    const m = new THREE.SpriteMaterial({ map: fb, transparent: true, alphaTest: 0.4 });
+    const m = new THREE.MeshLambertMaterial({ map: fb, alphaTest: 0.4, side: DS });
     m.userData.aspect = 2;
     m.userData.size = (M.repeat && M.repeat.trees) || 1;
     ext(url, fb, img => { m.userData.aspect = img.height / img.width; });
@@ -135,7 +135,7 @@ function init(M) {
   };
   const PEOPLE = (M.people && M.people.length ? M.people : [null, null, null, null]).map(u => {
     const fb = canvasTex(64, 128, personDraw);
-    const pm = new THREE.SpriteMaterial({ map: fb, transparent: true, alphaTest: 0.4 });
+    const pm = new THREE.MeshLambertMaterial({ map: fb, alphaTest: 0.4, side: DS });
     pm.userData.aspect = 0.5;
     ext(u, fb, img => { pm.userData.aspect = img.width / img.height; });
     return pm;
@@ -243,6 +243,7 @@ function init(M) {
     return g;
   })();
   const CANOPY_G = new THREE.ConeGeometry(1, 1, 7); CANOPY_G.translate(0, 0.5, 0);
+  const TREE_PLANE = new THREE.PlaneGeometry(1, 1); TREE_PLANE.translate(0, 0.5, 0);
   const SHADOW_MAT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
   const ROCK_G = new THREE.IcosahedronGeometry(1, 0);
   const LOG_G = new THREE.CylinderGeometry(0.4, 0.4, 2.6, 8); LOG_G.rotateZ(Math.PI / 2);
@@ -493,16 +494,18 @@ function init(M) {
   function wallOf(type, list, sgn, g, BAR) {
     const a = sgn * BAR;
     // Altura h sobre el terreno junto al muro, expresada respecto a la carretera de cada punto
-    const gy = h => i => groundY(list[i], a) - list[i].y + h;
+    // Base de la barrera: terreno junto a la carretera, o tablero si está sobre un puente
+    const base = i => groundY(list[i], a) + list[i].b * (1 + 3.5 / BRIDGE_H);
+    const gy = h => i => base(i) - list[i].y + h;
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
     if (type === 'rail') {
       add(ribbon(list, a, gy(0.3), a, gy(1.0)), pick(MAT.rail));
       for (let i = 0; i < list.length; i += 4) {
         const q = ptAt(list[i], a), m = new THREE.Mesh(POST, MAT.post);
-        m.position.set(q.x, groundY(list[i], a), q.z); m.userData.own = false; g.add(m);
+        m.position.set(q.x, base(i), q.z); m.userData.own = false; g.add(m);
       }
     } else if (type === 'wave') {
-      const top = i => groundY(list[i], a) - list[i].y + 0.9 + 0.35 * Math.sin(i * 0.7);
+      const top = i => base(i) - list[i].y + 0.9 + 0.35 * Math.sin(i * 0.7);
       add(ribbon(list, a, gy(0.3), a, top), pick(MAT.wave));
     } else if (type === 'stone') {
       wallVolume(list, a, a + sgn * 0.6, gy(0), gy(1.2), pick(MAT.stone), add);
@@ -683,9 +686,9 @@ function init(M) {
         }
         {
           const a = side * (BAR + 3 + col * 6 + rnd(-1, 1)), q = ptAt(p, a), y = groundY(p, a);
-          const mat = pick(TREE_MATS), w = rnd(6, 11) * (mat.userData.size || 1), s = new THREE.Sprite(mat);
+          const mat = pick(TREE_MATS), w = rnd(6, 11) * (mat.userData.size || 1), s = new THREE.Mesh(TREE_PLANE, mat);
           s.scale.set(w, w * mat.userData.aspect, 1);
-          s.center.set(0.5, 0);
+          s.userData.bb = true;
           s.position.set(q.x, y, q.z);
           s.userData.own = false; g.add(s);
           const cs = new THREE.Mesh(CANOPY_G, SHADOW_MAT);
@@ -703,14 +706,14 @@ function init(M) {
       const i0 = Math.floor(rnd(0, CH - 4)), side = pick([-1, 1]), base = BAR + rnd(2.5, 5);
       for (let j = 0; j < grp; j++) {
         const p = list[i0 + Math.floor(rnd(0, 4))], a = side * (base + rnd(-0.5, 0.5)), q = ptAt(p, a);
-        const mat = pick(PEOPLE), H = rnd(1.6, 1.9), sp = new THREE.Sprite(mat);
+        const mat = pick(PEOPLE), H = rnd(1.6, 1.9), sp = new THREE.Mesh(TREE_PLANE, mat);
         sp.scale.set(H * mat.userData.aspect, H, 1);
-        sp.center.set(0.5, 0);
+        sp.userData.bb = true;
         sp.position.set(q.x, groundY(p, a), q.z);
         sp.userData.own = false; g.add(sp);
       }
     }
-    g.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
+    g.traverse(m => { if (m.isMesh) { m.castShadow = !m.userData.bb; m.receiveShadow = true; } });
     world.add(g);
     chunks.set(c, g);
   }
@@ -1158,9 +1161,9 @@ function init(M) {
     document.body.classList.toggle('night', on);
     scene.background.set(on ? 0x0b1222 : SKY);
     scene.fog.color.set(on ? 0x0b1222 : SKY);
-    hemi.intensity = on ? 0.7 : 0.5;
-    sun.intensity = on ? 0.1 : 1.5;
-    headL.intensity = on ? 3 : 0;
+    hemi.intensity = on ? 0.5 * 0.05 : 0.5;
+    sun.intensity = on ? 0 : 1.5;
+    headL.intensity = on ? 4 : 0;
     cloudMats.forEach(mt => mt.color.set(on ? 0x5a6a80 : 0xffffff));
     document.querySelectorAll('.nightInput').forEach(i => { i.checked = on; });
     try { localStorage.setItem('endless_stage_night', on ? '1' : '0'); } catch (e) {}
@@ -1233,6 +1236,9 @@ function init(M) {
       $('hpBar').style.width = S.hp + '%';
       updateTurn();
     }
+    // Billboards: los planos de árboles y personas giran para mirar a la cámara
+    for (const cg of chunks.values()) for (const m of cg.children) if (m.userData.bb)
+      m.rotation.y = Math.atan2(cam.position.x - m.position.x, cam.position.z - m.position.z);
     sun.position.set(S.cam.x - 80, S.cam.y + 120, S.cam.z + 60);
     sun.target.position.set(S.cam.x, S.cam.y - 1.4, S.cam.z);
     if (S.state !== 'menu') renderer.render(scene, cam);
