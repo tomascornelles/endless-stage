@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Endless Stage · Simulador</title>
+<meta name="description" content="Endless Stage es un juego de rally 3D en el navegador con una pista infinita que se genera mientras conduces. Controla con teclado, giroscopio o táctil, y recorre asfalto, grava, nieve y barro.">
+<meta name="keywords" content="juego de rally, rally 3D, juego web, pista infinita, procedural, three.js, PWA, juego navegador">
+<meta name="author" content="Endless Stage">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://endless-stage.netlify.app/play.html">
+<meta name="theme-color" content="#0b1020">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Endless Stage">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bitcount+Single&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Endless Stage">
+<meta property="og:title" content="Endless Stage · Rally 3D sin fin">
+<meta property="og:description" content="Conduce por una pista infinita generada en tiempo real. Teclado, giroscopio o táctil.">
+<meta property="og:url" content="https://endless-stage.netlify.app/">
+<meta property="og:image" content="https://endless-stage.netlify.app/icons/icon-512.png">
+<meta property="og:locale" content="es_ES">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Endless Stage · Rally 3D sin fin">
+<meta name="twitter:description" content="Conduce por una pista infinita generada en tiempo real.">
+<meta name="twitter:image" content="https://endless-stage.netlify.app/icons/icon-512.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"VideoGame","name":"Endless Stage","description":"Juego de rally 3D en el navegador con pista infinita generada de forma procedural.","genre":["Racing","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"es","url":"https://endless-stage.netlify.app/","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"}}
+</script>
+</head>
+<body>
+<noscript>Endless Stage necesita JavaScript para ejecutarse.</noscript>
+
+<canvas id="c"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="lcd">
+    <div class="lbl">Velocidad</div>
+    <div class="dig"><span id="spd">0</span><small>km/h</small></div>
+    <div class="lbl">Distancia</div>
+    <div class="dig dist"><span id="dst">0.00</span><small>km</small></div>
+    <div class="lbl">Récord <span id="bestHud">0.00</span> km</div>
+    <div class="bar"><i id="hpBar"></i></div>
+    <div id="toast" class="hidden"></div>
+  </div>
+  <div class="hudCenter">
+    <div id="turns" class="glass"><div id="t1" class="turnMain"><span class="ico"></span><small class="dtxt">—</small></div><div id="t2" class="turnSub"><span class="ico"></span><small class="dtxt">—</small></div></div>
+  </div>
+  <div class="hudRight"><button id="pauseBtn" class="glass" aria-label="Menú">☰</button></div>
+</div>
+<div id="flash"></div>
+
+<div id="touch" class="hidden" data-m="touch">
+  <div class="zone" data-c="L" aria-label="Izquierda"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M15 5 L8 12 L15 19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="zone" data-c="B" aria-label="Freno"></div>
+  <div class="zone" data-c="R" aria-label="Derecha"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M9 5 L16 12 L9 19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+  <div class="zone" data-c="G" aria-label="Acelerador"></div>
+</div>
+
+<div id="menu" class="overlay">
+  <div class="card glass">
+    <div><div class="label">Simulación de rally</div><h1>Endless <span>Stage</span></h1></div>
+    <div class="tabs"><button class="tab on" data-tab="play">Gameplay</button><button class="tab" data-tab="ctl">Controles</button></div>
+    <button class="primary" id="go">Empezar carrera</button>
+    <div class="pane" data-pane="play">
+      <div class="label">Sensibilidad de giro</div>
+      <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
+      <label class="row"><input type="checkbox" class="nightInput"> Modo noche</label>
+      <p class="sub" id="bestMenu"></p>
+      <button class="chip hidden" id="restartMenu">Reiniciar</button>
+    </div>
+    <div class="pane hidden" data-pane="ctl">
+      <div class="label">Control</div>
+      <div class="seg">
+        <button class="chip" data-m="keys">Teclado</button>
+        <button class="chip" data-m="gyro">Giroscopio</button>
+        <button class="chip" data-m="touch">Táctil</button>
+      </div>
+      <p class="sub" id="hint"></p>
+    </div>
+    <p class="sub hidden" id="notice" style="color:#ffd166;white-space:pre-line"></p>
+    <p class="sub">Para instalarla: en Chrome o Edge usa el icono de instalar de la barra de direcciones. En iPhone o Android, «Añadir a pantalla de inicio».</p>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="card glass">
+    <div class="label">Pausa</div>
+    <h1>En <span>pausa</span></h1>
+    <div class="tabs"><button class="tab on" data-tab="play">Gameplay</button><button class="tab" data-tab="ctl">Controles</button></div>
+    <button class="primary" id="resume">Continuar</button>
+    <div class="pane" data-pane="play">
+      <div class="label">Sensibilidad de giro</div>
+      <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
+      <label class="row"><input type="checkbox" class="nightInput"> Modo noche</label>
+      <button class="chip" id="restartPause">Reiniciar</button>
+      <button class="chip" id="quit">Salir al menú</button>
+    </div>
+    <div class="pane hidden" data-pane="ctl">
+      <div class="label">Control</div>
+      <div class="seg">
+        <button class="chip" data-m="keys">Teclado</button>
+        <button class="chip" data-m="gyro">Giroscopio</button>
+        <button class="chip" data-m="touch">Táctil</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div class="card glass">
+    <div class="label">Carrera terminada</div>
+    <h1 id="ovDist">0 km</h1>
+    <p class="sub" id="ovInfo"></p>
+    <button class="primary" id="retry">Reintentar</button>
+    <button class="chip" id="menuBtn">Menú principal</button>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/game.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+}
+</script>
+</body>
+</html>

@@ -14,6 +14,12 @@ const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
 // La configuración de assets/manifest.json se lee antes de arrancar; si falta, se usan texturas procedurales
+// Iconos de aviso por defecto (SVG con currentColor). El manifiesto puede sustituirlos en 'arrows'.
+const FB_ICONS = {
+  left: '<svg viewBox="0 0 24 24"><path d="M10 4 L4 10 L10 16 M4 10 H16 Q20 10 20 14 V21" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  right: '<svg viewBox="0 0 24 24"><path d="M14 4 L20 10 L14 16 M20 10 H8 Q4 10 4 14 V21" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  obstacle: '<svg viewBox="0 0 24 24"><path d="M12 3 L22 20 H2 Z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 9 V14 M12 16.5 V17" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
+};
 // Avisos visibles en el menú para diagnosticar recursos que no cargan
 const notice = msg => {
   const el = document.getElementById('notice');
@@ -121,6 +127,20 @@ function init(M) {
     ? M.trees.map(u => spriteMat(u, 'pine'))
     : [spriteMat(null, 'pine'), spriteMat(null, 'round')];
 
+  // Personas en billboard: una textura por imagen del manifiesto (respaldo: figura sencilla)
+  const personDraw = x => {
+    x.fillStyle = '#2b3a55';
+    x.beginPath(); x.arc(32, 22, 11, 0, 7); x.fill();
+    x.fillRect(22, 36, 20, 48); x.fillRect(22, 84, 8, 40); x.fillRect(34, 84, 8, 40);
+  };
+  const PEOPLE = (M.people && M.people.length ? M.people : [null, null, null, null]).map(u => {
+    const fb = canvasTex(64, 128, personDraw);
+    const pm = new THREE.SpriteMaterial({ map: fb, transparent: true, alphaTest: 0.4 });
+    pm.userData.aspect = 0.5;
+    ext(u, fb, img => { pm.userData.aspect = img.width / img.height; });
+    return pm;
+  });
+
   // Casas: paredes y tejados de PNG (M.houseWalls / M.houseRoofs) más tintes procedurales
   const WALL_MATS = [0xf2e6d0, 0xd9a77b, 0xa8c3d6, 0xe0d28a, 0xc9b8e6, 0xf0c0b0]
     .map(c => new THREE.MeshLambertMaterial({ map: TX.plaster, color: c, side: DS }))
@@ -180,7 +200,7 @@ function init(M) {
     snow: new THREE.MeshLambertMaterial({ color: 0xf4f8ff, flatShading: true }),
     pillar: new THREE.MeshLambertMaterial({ color: 0x9aa3ad }),
     log: pool('log', THREE.MeshLambertMaterial, { map: canvasTex(64, 64, noise('#6b4a2b', '40,25,10', 0.6)) }),
-    cone: pool('cone', THREE.MeshLambertMaterial, { color: 0xff7a1a }),
+    cone: pool('cone', THREE.MeshLambertMaterial, { map: canvasTex(64, 64, x => { x.fillStyle = '#ff7a1a'; x.fillRect(0, 0, 64, 64); }), color: 0xffffff }),
     mountain: new THREE.MeshLambertMaterial({ vertexColors: true })
   };
 
@@ -222,6 +242,8 @@ function init(M) {
     g.computeVertexNormals();
     return g;
   })();
+  const CANOPY_G = new THREE.ConeGeometry(1, 1, 7); CANOPY_G.translate(0, 0.5, 0);
+  const SHADOW_MAT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
   const ROCK_G = new THREE.IcosahedronGeometry(1, 0);
   const LOG_G = new THREE.CylinderGeometry(0.4, 0.4, 2.6, 8); LOG_G.rotateZ(Math.PI / 2);
   const CONE_G = new THREE.ConeGeometry(0.35, 0.9, 8);
@@ -229,14 +251,33 @@ function init(M) {
   // ---------- Three.js ----------
   const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true, logarithmicDepthBuffer: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
   const SKY = 0x8fd3ff;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);
   scene.fog = new THREE.Fog(SKY, 140, 420);
   const cam = new THREE.PerspectiveCamera(68, 1, 0.3, 900);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x406030, 0.9));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+  // Faros: foco unido a la cámara que solo se enciende de noche
+  const headL = new THREE.SpotLight(0xfff3d6, 0, 90, 0.55, 0.45, 1);
+  headL.position.set(0, 0, 0);
+  headL.target.position.set(0, -0.3, -30);
+  cam.add(headL); cam.add(headL.target);
+  scene.add(cam);
+  const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x4a5a3a, 0.5);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff1d6, 1.5);
   sun.position.set(-80, 120, 60);
+  // Sombras del sol: la zona de sombra sigue al coche (unos 140 m)
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 });
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.shadow.bias = -0.0008;
+  sun.shadow.normalBias = 0.02;
+  scene.add(sun.target);
   scene.add(sun);
   function resize() {
     renderer.setSize(innerWidth, innerHeight, false);
@@ -298,6 +339,69 @@ function init(M) {
     return m;
   }
   // Casa compuesta por formas: cuerpo + tejado (a dos aguas, a cuatro aguas, plano), L, torre o granero
+  const FRAME_MAT = new THREE.MeshLambertMaterial({ color: 0xe9e4da });
+  const GLASS_MAT = new THREE.MeshPhongMaterial({ color: 0x6d9cc0, specular: 0xbfdcf2, shininess: 90 });
+  const SILL_MAT = new THREE.MeshLambertMaterial({ color: 0xcfc6b6 });
+  const DOOR_MAT = new THREE.MeshLambertMaterial({ color: 0x6b4428 });
+  const PANEL_MAT = new THREE.MeshLambertMaterial({ color: 0x553620 });
+  const SHUTTER_MAT = new THREE.MeshLambertMaterial({ color: 0x3d5a40 });
+  const BRASS_MAT = new THREE.MeshPhongMaterial({ color: 0xc9a84a, specular: 0xfff0c0, shininess: 60 });
+  const KNOB = new THREE.SphereGeometry(0.06, 8, 6);
+  const DECOR_MATS = { frame: FRAME_MAT, glass: GLASS_MAT, sill: SILL_MAT, door: DOOR_MAT, panel: PANEL_MAT, shutter: SHUTTER_MAT };
+  // Une cajas (BOX) en una sola geometría: una malla por material y casa
+  function mergeBoxes(items) {
+    const P = [], N = [], I = [];
+    const bp = BOX.attributes.position, bn = BOX.attributes.normal, bi = BOX.index.array;
+    let off = 0;
+    for (const it of items) {
+      for (let v = 0; v < bp.count; v++) {
+        P.push(bp.getX(v) * it.sx + it.x, bp.getY(v) * it.sy + it.y, bp.getZ(v) * it.sz + it.z);
+        N.push(bn.getX(v), bn.getY(v), bn.getZ(v));
+      }
+      for (let k = 0; k < bi.length; k++) I.push(bi[k] + off);
+      off += bp.count;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+    g.setIndex(I);
+    return g;
+  }
+  // Ventanas y puertas: sobresalen de la fachada (marco, cristal, parteluz, alféizar y persianas)
+  function decor(g, w, h, d) {
+    const parts = { frame: [], glass: [], sill: [], door: [], panel: [], shutter: [] };
+    const B = (k, sx, sy, sz, x, y, z) => parts[k].push({ sx, sy, sz, x, y, z });
+    const n = Math.max(1, Math.floor((w - 0.6) / 1.5));
+    for (const f of [1, -1]) {
+      const zs = f * d / 2, ww = 0.9, wh = 1.2;
+      for (let yb = 1.0; yb + wh < h - 0.4; yb += 2.8) for (let k = 0; k < n; k++) {
+        const x = (k - (n - 1) / 2) * (w / n);
+        if (yb < 2.4 && f === 1 && Math.abs(x) < 1.0) continue;   // hueco de la puerta
+        B('frame', ww + 0.16, wh + 0.16, 0.08, x - ww / 2 - 0.08, yb - 0.08, zs + f * 0.04);
+        B('glass', ww, wh, 0.03, x - ww / 2, yb, zs + f * 0.03);
+        B('frame', 0.06, wh, 0.06, x - 0.03, yb, zs + f * 0.05);
+        B('frame', ww, 0.06, 0.06, x - ww / 2, yb + wh / 2, zs + f * 0.05);
+        B('sill', ww + 0.32, 0.06, 0.24, x - ww / 2 - 0.16, yb - 0.12, zs + f * 0.12);
+        if (Math.random() < 0.35) {
+          B('shutter', 0.28, wh, 0.04, x - ww / 2 - 0.2, yb, zs + f * 0.03);
+          B('shutter', 0.28, wh, 0.04, x + ww / 2 + 0.2 - 0.28, yb, zs + f * 0.03);
+        }
+      }
+    }
+    // Puerta con marco, hoja y dos paneles, pomo y escalón
+    const zd = d / 2;
+    B('frame', 1.36, 2.12, 0.1, -0.68, 0, zd + 0.04);
+    B('door', 1.0, 2.0, 0.08, -0.5, 0.04, zd + 0.06);
+    B('panel', 0.72, 0.62, 0.03, -0.36, 1.2, zd + 0.11);
+    B('panel', 0.72, 0.78, 0.03, -0.36, 0.25, zd + 0.11);
+    B('sill', 1.8, 0.16, 0.8, -0.9, 0, zd + 0.4);
+    for (const k of Object.keys(parts)) if (parts[k].length) {
+      const m = new THREE.Mesh(mergeBoxes(parts[k]), DECOR_MATS[k]);
+      m.userData.own = true; g.add(m);
+    }
+    const kn = new THREE.Mesh(KNOB, BRASS_MAT);
+    kn.position.set(0.12, 1.0, zd + 0.12); kn.userData.own = false; g.add(kn);
+  }
   function house(x, y, z, yaw) {
     const kind = pick(['gable', 'hip', 'flat', 'L', 'tower', 'barn']);
     const w = rnd(3, 6.5), d = rnd(3, 6), h = kind === 'tower' ? rnd(7, 11) : rnd(3, 6);
@@ -329,6 +433,7 @@ function init(M) {
       else if (kind === 'hip') part(PYR, w * 1.1, rnd(1.5, 2.5), d * 1.1, 0, h, 0, rm);
       else part(BOX, w * 1.06, 0.25, d * 1.06, 0, h, 0, rm);
     }
+    decor(g, w, h, d);
     const fw = kind === 'barn' ? w * 1.5 : kind === 'L' ? w * 1.4 : w;
     const fd = kind === 'barn' ? d * 1.8 : kind === 'L' ? d * 1.2 : d;
     g.userData.hw = fw / 2 + 0.2; g.userData.hd = fd / 2 + 0.2;
@@ -367,30 +472,50 @@ function init(M) {
   }
 
   // ---------- Muros ----------
+  // Muro como volumen: cara exterior, cara superior, cara interior y tapas en los dos extremos
+  function wallVolume(list, a, b, yBot, yTop, m, add) {
+    const L = list.length - 1, fy = (v, i) => (typeof v === 'function' ? v(i) : v);
+    add(ribbon(list, a, yBot, a, yTop), m);
+    add(ribbon(list, a, yTop, b, yTop), m);
+    add(ribbon(list, b, yTop, b, yBot), m);
+    for (const i of [0, L]) {
+      const p = list[i], A = ptAt(p, a), B = ptAt(p, b), y0 = fy(yBot, i), y1 = fy(yTop, i);
+      const pos = new Float32Array([A.x, p.y + y0, A.z, A.x, p.y + y1, A.z, B.x, p.y + y1, B.z, B.x, p.y + y0, B.z]);
+      const uv = new Float32Array([0, 0, 0, 1, 1, 1, 1, 0]);
+      const cap = new THREE.BufferGeometry();
+      cap.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      cap.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      cap.setIndex([0, 1, 2, 0, 2, 3]);
+      cap.computeVertexNormals();
+      add(cap, m);
+    }
+  }
   function wallOf(type, list, sgn, g, BAR) {
     const a = sgn * BAR;
+    // Altura h sobre el terreno junto al muro, expresada respecto a la carretera de cada punto
+    const gy = h => i => groundY(list[i], a) - list[i].y + h;
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
     if (type === 'rail') {
-      add(ribbon(list, a, 0.3, a, 1.0), pick(MAT.rail));
+      add(ribbon(list, a, gy(0.3), a, gy(1.0)), pick(MAT.rail));
       for (let i = 0; i < list.length; i += 4) {
         const q = ptAt(list[i], a), m = new THREE.Mesh(POST, MAT.post);
-        m.position.set(q.x, list[i].y, q.z); m.userData.own = false; g.add(m);
+        m.position.set(q.x, groundY(list[i], a), q.z); m.userData.own = false; g.add(m);
       }
     } else if (type === 'wave') {
-      add(ribbon(list, a, 0.2, a + sgn * 0.6, i => 0.7 + 0.35 * Math.sin(i * 0.7)), pick(MAT.wave));
+      const top = i => groundY(list[i], a) - list[i].y + 0.9 + 0.35 * Math.sin(i * 0.7);
+      add(ribbon(list, a, gy(0.3), a, top), pick(MAT.wave));
     } else if (type === 'stone') {
-      add(ribbon(list, a, 0, a, 1.2), pick(MAT.stone));
-      add(ribbon(list, a, 1.2, a + sgn * 0.4, 1.2), pick(MAT.stone));
+      wallVolume(list, a, a + sgn * 0.6, gy(0), gy(1.2), pick(MAT.stone), add);
     } else if (type === 'hay') {
       for (let i = 0; i < list.length - 1; i++) {
         const p = list[i], q = ptAt(p, a + sgn * 0.9), m = new THREE.Mesh(HAY, pick(MAT.hay));
-        m.position.set(q.x, p.y + 0.9, q.z); m.rotation.y = p.h - Math.PI / 2; m.userData.own = false; g.add(m);
+        m.position.set(q.x, groundY(p, a + sgn * 0.9) + 0.9, q.z); m.rotation.y = p.h - Math.PI / 2; m.userData.own = false; g.add(m);
       }
     } else if (type === 'tyre') {
       const slots = [];
       for (let i = 0; i < list.length - 1; i += 2) for (const k of [-1.5, 0, 1.5]) {
         const p = list[i], q = ptAt(p, a + sgn * 0.9), n = Math.random() < 0.5 ? 3 : 4;
-        for (let h = 0; h < n; h++) slots.push({ x: q.x + Math.sin(p.h) * k, y: p.y + 0.2 + h * 0.4, z: q.z + Math.cos(p.h) * k });
+        for (let h = 0; h < n; h++) slots.push({ x: q.x + Math.sin(p.h) * k, y: groundY(p, a + sgn * 0.9) + 0.2 + h * 0.4, z: q.z + Math.cos(p.h) * k });
       }
       if (!slots.length) return;
       const mats = MAT.tyre, buckets = mats.map(() => []);
@@ -502,7 +627,9 @@ function init(M) {
     const ROAD_W = roadWidthAt(c * CH * STEP), BAR = ROAD_W / 2 + 0.4;
     widthMap.set(c, ROAD_W);
     const t = terrFor(c), zone = zoneFor();
-    const wall = Math.random() < 0.2 ? 'tyre' : pick(['rail', 'wave', 'stone', 'hay']);
+    const onBridge = list.some(p => p.b > 1);
+    const wall = onBridge ? pick(['rail', 'wave', 'stone'])
+      : (Math.random() < 0.2 ? 'tyre' : pick(['rail', 'wave', 'stone', 'hay']));
     terrMap.set(c, t); zoneMap.set(c, zone);
     const g = new THREE.Group();
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
@@ -561,6 +688,9 @@ function init(M) {
           s.center.set(0.5, 0);
           s.position.set(q.x, y, q.z);
           s.userData.own = false; g.add(s);
+          const cs = new THREE.Mesh(CANOPY_G, SHADOW_MAT);
+          cs.scale.set(w * 0.5, w * mat.userData.aspect, w * 0.5);
+          cs.position.set(q.x, y, q.z); cs.userData.own = false; g.add(cs);
         }
       }
     }
@@ -568,11 +698,24 @@ function init(M) {
       const oi = Math.floor(rnd(2, CH - 2));
       addObstacle(g, list[oi], rnd(-ROAD_W / 2 + 0.9, ROAD_W / 2 - 0.9), c, c * CH + oi);
     }
+    if (Math.random() < 0.4) {
+      const grp = Math.random() < 0.5 ? Math.floor(rnd(2, 6)) : Math.floor(rnd(1, 3));
+      const i0 = Math.floor(rnd(0, CH - 4)), side = pick([-1, 1]), base = BAR + rnd(2.5, 5);
+      for (let j = 0; j < grp; j++) {
+        const p = list[i0 + Math.floor(rnd(0, 4))], a = side * (base + rnd(-0.5, 0.5)), q = ptAt(p, a);
+        const mat = pick(PEOPLE), H = rnd(1.6, 1.9), sp = new THREE.Sprite(mat);
+        sp.scale.set(H * mat.userData.aspect, H, 1);
+        sp.center.set(0.5, 0);
+        sp.position.set(q.x, groundY(p, a), q.z);
+        sp.userData.own = false; g.add(sp);
+      }
+    }
+    g.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     world.add(g);
     chunks.set(c, g);
   }
   function disposeChunk(g) {
-    g.children.forEach(m => { if (m.userData.own) m.geometry.dispose(); });
+    g.traverse(m => { if (m.isMesh && m.userData.own) m.geometry.dispose(); });
   }
   function updateTrack(p) {
     const c0 = Math.floor(p / CH);
@@ -592,6 +735,33 @@ function init(M) {
   function terrAt(p) { return TERR[terrMap.get(Math.floor(p / CH)) ?? 0]; }
 
   // ---------- Sonido ----------
+  const SND = { raw: {}, buf: {} };
+  const ICONS = Object.assign({}, FB_ICONS);
+  (function loadExternal() {
+    const so = M.sounds || {}, list = { engine: so.engine, shift: so.shift };
+    Object.entries(so.terrain || {}).forEach(([k, u]) => { list['t:' + k] = u; });
+    for (const [k, u] of Object.entries(list)) if (u) {
+      fetch(u).then(r => (r.ok ? r.arrayBuffer() : null)).then(b => { if (b) SND.raw[k] = b; }).catch(() => {});
+    }
+    Object.keys(FB_ICONS).forEach(k => {
+      const u = M.arrows && M.arrows[k];
+      if (u) fetch(u).then(r => (r.ok ? r.text() : null)).then(t => {
+        if (t) { ICONS[k] = t; document.querySelectorAll('.ico').forEach(e => { e.dataset.k = ''; }); }
+      }).catch(() => {});
+    });
+  })();
+  function decodePending(ac) {
+    for (const k of Object.keys(SND.raw)) {
+      const ab = SND.raw[k]; delete SND.raw[k];
+      ac.decodeAudioData(ab).then(d => { SND.buf[k] = d; }).catch(() => {});
+    }
+  }
+  function loopNode(ac, buf) {
+    const src = ac.createBufferSource(), g = ac.createGain();
+    src.buffer = buf; src.loop = true; g.gain.value = 0;
+    src.connect(g); g.connect(ac.destination); src.start();
+    return { src, g };
+  }
   let audioCtx = null, crashBuf = null, eng = null;
   function audio() {
     if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
@@ -618,10 +788,16 @@ function init(M) {
     const eg = ac.createGain(); eg.gain.value = 0;
     o1.connect(ef); o2.connect(ef); ef.connect(eg); eg.connect(ac.destination);
     o1.start(); o2.start();
-    eng = { nb, tf, tg, o1, o2, ef, eg, gear: 0 };
+    eng = { nb, tf, tg, o1, o2, ef, eg, gear: 0, loop: null, tl: {} };
   }
   function playShift() {
     const ac = audioCtx; if (!ac || !eng) return;
+    if (SND.buf.shift) {
+      const src = ac.createBufferSource(), g = ac.createGain();
+      src.buffer = SND.buf.shift; g.gain.value = 0.6;
+      src.connect(g); g.connect(ac.destination); src.start();
+      return;
+    }
     const src = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain();
     src.buffer = eng.nb; bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 1.5;
     g.gain.setValueAtTime(0.25, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.12);
@@ -636,21 +812,39 @@ function init(M) {
   };
   function updateSound() {
     const ac = audioCtx; if (!ac || !eng) return;
+    if (Object.keys(SND.raw).length) decodePending(ac);
     const on = S.state === 'playing', t = ac.currentTime, v = Math.abs(S.speed);
     const gas = on && readInput().gas;
     const gear = Math.min(5, Math.floor(v / 14) + 1);
     if (on && eng.gear && gear !== eng.gear) playShift();
     eng.gear = on ? gear : 0;
     const rpmN = clamp((v - (gear - 1) * 14) / 14, 0, 1);
+    const T = terrAt(S.p);
+    // Motor: archivo en bucle (si existe) o síntesis
+    const hasEng = !!SND.buf.engine;
+    if (hasEng && !eng.loop) eng.loop = loopNode(ac, SND.buf.engine);
+    if (hasEng) {
+      eng.loop.src.playbackRate.setTargetAtTime(0.5 + rpmN * 1.3 + (gas ? 0.1 : 0), t, 0.1);
+      eng.loop.g.gain.setTargetAtTime(on ? 0.35 + 0.25 * (gas ? 1 : 0.4) : 0, t, 0.1);
+    }
     const f = (900 + rpmN * 4200) / 30;
     eng.o1.frequency.setTargetAtTime(f, t, 0.05);
     eng.o2.frequency.setTargetAtTime(f / 2, t, 0.05);
     eng.ef.frequency.setTargetAtTime(400 + rpmN * 1400 + (gas ? 300 : 0), t, 0.1);
-    eng.eg.gain.setTargetAtTime(on ? 0.04 + 0.1 * (gas ? 1 : 0.4) + 0.04 * rpmN : 0, t, 0.1);
-    const T = TSND[terrAt(S.p).name] || TSND.Asfalto;
-    eng.tf.frequency.setTargetAtTime(T.f * (0.7 + 0.3 * clamp(v / 40, 0, 1)), t, 0.2);
-    eng.tf.Q.setTargetAtTime(T.q, t, 0.2);
-    eng.tg.gain.setTargetAtTime(on ? T.g * clamp(v / 30, 0, 1) : 0, t, 0.2);
+    eng.eg.gain.setTargetAtTime(on && !hasEng ? 0.04 + 0.1 * (gas ? 1 : 0.4) + 0.04 * rpmN : 0, t, 0.1);
+    // Terreno: archivo en bucle por superficie (si existe) o ruido sintetizado
+    for (const k of Object.keys(SND.buf)) if (k.startsWith('t:')) {
+      const name = k.slice(2);
+      if (!eng.tl[name]) eng.tl[name] = loopNode(ac, SND.buf[k]);
+      const L = eng.tl[name];
+      L.src.playbackRate.setTargetAtTime(0.8 + 0.5 * clamp(v / 40, 0, 1), t, 0.2);
+      L.g.gain.setTargetAtTime(on && name === T.name ? 0.7 * clamp(v / 30, 0, 1) : 0, t, 0.2);
+    }
+    const synthT = !SND.buf['t:' + T.name];
+    const P = TSND[T.name] || TSND.Asfalto;
+    eng.tf.frequency.setTargetAtTime(P.f * (0.7 + 0.3 * clamp(v / 40, 0, 1)), t, 0.2);
+    eng.tf.Q.setTargetAtTime(P.q, t, 0.2);
+    eng.tg.gain.setTargetAtTime(on && synthT ? P.g * clamp(v / 30, 0, 1) : 0, t, 0.2);
   }
   function playCrash(k) {
     const ac = audio(); if (!ac) return;
@@ -758,6 +952,7 @@ function init(M) {
     $('touch').classList.toggle('hidden', st !== 'playing' || S.mode === 'keys');
   }
   function start() {
+    $('restartMenu').classList.remove('hidden');
     audio();
     if (S.mode === 'gyro') {
       requestGyro();
@@ -784,6 +979,7 @@ function init(M) {
   }
   function goMenu() {
     S.state = 'menu';
+    $('restartMenu').classList.add('hidden');
     resetTrack();
     updateTrack(0);
     Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, dist: 0, terr: -1, cam: null });
@@ -802,6 +998,8 @@ function init(M) {
   }
   $('go').onclick = start;
   $('retry').onclick = start;
+  $('restartMenu').onclick = start;
+  $('restartPause').onclick = start;
   $('menuBtn').onclick = goMenu;
   $('quit').onclick = goMenu;
   $('resume').onclick = togglePause;
@@ -847,7 +1045,8 @@ function init(M) {
     }
     if (Math.abs(S.lat) > RW / 2 + 0.5) S.speed *= 1 - 0.5 * dt;
     S.cd = Math.max(0, S.cd - dt);
-    S.p += vx / STEP;
+    S.p = Math.max(0, S.p + vx / STEP);
+    if (S.p === 0 && vx < 0) S.speed = 0;
     S.dist = S.p * STEP;
 
     if (S.state === 'playing' && S.hp <= 0) end();
@@ -909,14 +1108,19 @@ function init(M) {
       const d = Math.max(0, (it.start - S.p) * STEP);
       return d < 1000 ? Math.round(d / 10) * 10 + 'm' : (d / 1000).toFixed(1) + 'km';
     };
-    const label = it => it.kind === 'obs' ? '⚠ ' + dTxt(it)
-      : it.ang > 0 ? '↰ ' + dTxt(it) : dTxt(it) + ' ↱';
     const color = it => it.kind === 'obs' ? '#ff5a5a'
       : it.maxK < 0.01 ? '#7dff9b' : it.maxK < 0.016 ? '#ffd166' : '#ff5a5a';
+    const show = (el, it) => {
+      const key = it.kind === 'obs' ? 'obstacle' : it.ang > 0 ? 'left' : 'right';
+      const ico = el.querySelector('.ico');
+      if (ico.dataset.k !== key) { ico.dataset.k = key; ico.innerHTML = ICONS[key]; }
+      el.querySelector('.dtxt').textContent = dTxt(it);
+      el.style.color = color(it);
+    };
     panel.classList.toggle('hidden', items.length === 0);
-    if (items.length) { t1.textContent = label(items[0]); t1.style.color = color(items[0]); }
+    if (items.length) show(t1, items[0]);
     t2.classList.toggle('hidden', items.length < 2);
-    if (items.length > 1) { t2.textContent = label(items[1]); t2.style.color = color(items[1]); }
+    if (items.length > 1) show(t2, items[1]);
   }
 
   // ---------- Nubes ----------
@@ -948,11 +1152,32 @@ function init(M) {
     }
   }
 
+  // ---------- Modo noche y pestañas ----------
+  function loadNight() { try { return localStorage.getItem('endless_stage_night') === '1'; } catch (e) { return false; } }
+  function setNight(on) {
+    document.body.classList.toggle('night', on);
+    scene.background.set(on ? 0x0b1222 : SKY);
+    scene.fog.color.set(on ? 0x0b1222 : SKY);
+    hemi.intensity = on ? 0.7 : 0.5;
+    sun.intensity = on ? 0.1 : 1.5;
+    headL.intensity = on ? 3 : 0;
+    cloudMats.forEach(mt => mt.color.set(on ? 0x5a6a80 : 0xffffff));
+    document.querySelectorAll('.nightInput').forEach(i => { i.checked = on; });
+    try { localStorage.setItem('endless_stage_night', on ? '1' : '0'); } catch (e) {}
+  }
+  document.querySelectorAll('.nightInput').forEach(i => i.addEventListener('change', () => setNight(i.checked)));
+  document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+    const card = b.closest('.card');
+    card.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
+    card.querySelectorAll('.pane').forEach(pn => pn.classList.toggle('hidden', pn.dataset.pane !== b.dataset.tab));
+  });
+
   // ---------- Bucle ----------
   resetTrack();
   updateTrack(0);
   setSens(loadSens());
-  setMode('keys');
+  setNight(loadNight());
+  setMode((matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) ? 'touch' : 'keys');
   sync();
   {
     const mi = M.menuImage || 'assets/menu.png', probe = new Image();
@@ -996,6 +1221,7 @@ function init(M) {
       $('spd').textContent = Math.round(S.speed * 3.6);
       $('spd').nextElementSibling.textContent = S.speed < -0.5 ? 'km/h · R' : 'km/h';
       $('dst').textContent = (S.dist / 1000).toFixed(2);
+      $('bestHud').textContent = (S.best / 1000).toFixed(2);
       if (S.state === 'playing' && !S.beat && S.prevBest > 0 && S.dist > S.prevBest) {
         S.beat = true;
         toast('¡Nuevo récord! ' + (S.dist / 1000).toFixed(2) + ' km');
@@ -1007,6 +1233,8 @@ function init(M) {
       $('hpBar').style.width = S.hp + '%';
       updateTurn();
     }
+    sun.position.set(S.cam.x - 80, S.cam.y + 120, S.cam.z + 60);
+    sun.target.position.set(S.cam.x, S.cam.y - 1.4, S.cam.z);
     if (S.state !== 'menu') renderer.render(scene, cam);
     requestAnimationFrame(frame);
   }

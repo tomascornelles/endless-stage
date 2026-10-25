@@ -24,8 +24,8 @@ test('index.html: referencias locales existen', () => {
   for (const r of refs) assert.ok(exists(r), `falta ${r}`);
 });
 
-test('index.html: core.js se carga antes que game.js', () => {
-  const html = read('index.html');
+test('play.html: core.js se carga antes que game.js', () => {
+  const html = read('play.html');
   assert.ok(html.indexOf('js/core.js') > 0);
   assert.ok(html.indexOf('js/core.js') < html.indexOf('js/game.js'));
 });

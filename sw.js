@@ -3,7 +3,7 @@
 // CDN de Three.js: caché primero (versión fija).
 const VERSION = 'endless-stage-v2';
 const CORE = [
-  './', 'index.html', 'css/style.css', 'js/core.js', 'js/game.js', 'manifest.webmanifest', 'favicon.svg',
+  './', 'index.html', 'play.html', 'css/style.css', 'js/core.js', 'js/game.js', 'manifest.webmanifest', 'favicon.svg',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png', 'icons/favicon-32.png'
 ];

@@ -2,9 +2,9 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Endless Stage · Juego de rally 3D con pista infinita</title>
-<meta name="description" content="Endless Stage es un juego de rally 3D en el navegador con una pista infinita que se genera mientras conduces. Controla con teclado, giroscopio o táctil, y recorre asfalto, grava, nieve y barro.">
+<meta name="description" content="Endless Stage es un juego de rally 3D en el navegador con una pista infinita que se genera mientras conduces. Teclado, giroscopio o táctil, con curvas, chicanes, obstáculos, asfalto, grava, nieve y barro.">
 <meta name="keywords" content="juego de rally, rally 3D, juego web, pista infinita, procedural, three.js, PWA, juego navegador">
 <meta name="author" content="Endless Stage">
 <meta name="robots" content="index, follow">
@@ -13,17 +13,11 @@
 <meta name="color-scheme" content="dark">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Endless Stage">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bitcount+Single&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Endless Stage">
 <meta property="og:title" content="Endless Stage · Rally 3D sin fin">
@@ -38,84 +32,72 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"VideoGame","name":"Endless Stage","description":"Juego de rally 3D en el navegador con pista infinita generada de forma procedural.","genre":["Racing","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"es","url":"https://endless-stage.netlify.app/","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"}}
 </script>
+<style>
+  :root{--acc:#7cf5ff;--edge:rgba(255,255,255,.18)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#0b1020;color:#f2f7ff;font-family:"Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;line-height:1.6}
+  body{min-height:100%;background:radial-gradient(circle at 20% 0%,rgba(124,245,255,.18),transparent 55%),#0b1020}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px}
+  header.hero{min-height:88vh;display:flex;flex-direction:column;justify-content:center;gap:20px;padding:48px 0}
+  .label{font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.7}
+  h1{font-size:clamp(40px,8vw,72px);font-weight:700;letter-spacing:-1px;line-height:1.05}
+  h1 span{color:var(--acc)}
+  .lead{font-size:clamp(16px,2.2vw,20px);opacity:.85;max-width:620px}
+  .btn{display:inline-block;align-self:flex-start;padding:16px 36px;border-radius:16px;background:linear-gradient(135deg,#7cf5ff,#4d8dff);color:#06112a;font-weight:700;font-size:18px;text-decoration:none;box-shadow:0 8px 24px rgba(77,141,255,.45)}
+  .btn:hover{filter:brightness(1.08)}
+  section{padding:40px 0;border-top:1px solid var(--edge)}
+  h2{font-size:clamp(24px,4vw,32px);margin-bottom:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+  .card{padding:22px;border-radius:20px;background:linear-gradient(135deg,rgba(255,255,255,.1),rgba(255,255,255,.03));border:1px solid var(--edge);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .card h3{font-size:18px;margin-bottom:6px;color:var(--acc)}
+  .card p,li{opacity:.85;font-size:15px}
+  ol,ul{padding-left:20px}
+  li{margin-bottom:6px}
+  footer{padding:32px 0;border-top:1px solid var(--edge);font-size:14px;opacity:.7}
+  footer a{color:var(--acc)}
+</style>
 </head>
 <body>
-<noscript>Endless Stage necesita JavaScript para ejecutarse.</noscript>
+<header class="hero wrap">
+  <div class="label">Simulación de rally · Navegador</div>
+  <h1>Endless <span>Stage</span></h1>
+  <p class="lead">Una pista sin fin que se genera mientras conduces. Curvas, chicanes, curvas enlazadas, obstáculos, terrenos que cambian y un coche que se daña con cada golpe. ¿Hasta dónde llegas?</p>
+  <div><a class="btn" href="play.html">Correr</a></div>
+</header>
 
-<canvas id="c"></canvas>
-
-<div id="hud" class="hidden">
-  <div class="lcd">
-    <div class="lbl">Velocidad</div>
-    <div class="dig"><span id="spd">0</span><small>km/h</small></div>
-    <div class="lbl">Distancia</div>
-    <div class="dig dist"><span id="dst">0.00</span><small>km</small></div>
-    <div class="bar"><i id="hpBar"></i></div>
-  </div>
-  <div class="hudCenter">
-    <div id="turns" class="glass"><div id="t1" class="turnMain">—</div><div id="t2" class="turnSub">—</div></div>
-  </div>
-  <div class="hudRight"><button id="pauseBtn" class="glass" aria-label="Menú">☰</button></div>
-</div>
-<div id="flash"></div>
-<div id="toast" class="hidden"></div>
-
-<div id="touch" class="hidden" data-m="touch">
-  <div class="zone" data-c="L">◀</div>
-  <div class="zone" data-c="B">FRENO</div>
-  <div class="zone" data-c="R">▶</div>
-  <div class="zone" data-c="G">▲</div>
-</div>
-
-<div id="menu" class="overlay">
-  <div class="card glass">
-    <div><div class="label">Simulación de rally</div><h1>Endless <span>Stage</span></h1></div>
-    <p class="sub">Una pista sin fin que se genera mientras conduces. Cada choque daña el coche: sobrevive la mayor distancia. Colinas, puentes, pueblos y bosques, con asfalto, grava, nieve y barro.</p>
-    <div class="label">Controles</div>
-    <div class="seg">
-      <button class="chip on" data-m="keys">Teclado</button>
-      <button class="chip" data-m="gyro">Giroscopio</button>
-      <button class="chip" data-m="touch">Táctil</button>
+<main class="wrap">
+  <section>
+    <h2>Cómo se juega</h2>
+    <div class="grid">
+      <div class="card"><h3>Pista infinita</h3><p>El trazado se crea a medida que avanzas. No hay meta: el objetivo es recorrer la mayor distancia posible.</p></div>
+      <div class="card"><h3>Daños</h3><p>Cada golpe contra barreras, casas u obstáculos reduce la salud del coche. Al llegar a cero, la carrera termina.</p></div>
+      <div class="card"><h3>Avisos</h3><p>Las flechas anuncian la próxima curva con su distancia y su dificultad: verde abierta, amarilla media y roja cerrada. También avisan de los peligros.</p></div>
+      <div class="card"><h3>Terrenos</h3><p>Asfalto, grava, nieve y barro cambian el agarre y el sonido. La nieve resbala a alta velocidad.</p></div>
     </div>
-    <div class="label">Sensibilidad de giro</div>
-    <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
-    <p class="sub" id="bestMenu"></p>
-    <p class="sub" id="hint"></p>
-    <button class="primary" id="go">Empezar carrera</button>
-    <p class="sub hidden" id="notice" style="color:#ffd166;white-space:pre-line"></p>
-    <p class="sub">Para instalarla: en Chrome o Edge usa el icono de instalar de la barra de direcciones. En iPhone o Android, «Añadir a pantalla de inicio».</p>
-  </div>
-</div>
+  </section>
 
-<div id="pause" class="overlay hidden">
-  <div class="card glass">
-    <div class="label">Pausa</div>
-    <h1>En <span>pausa</span></h1>
-    <div class="label">Cambiar control</div>
-    <div class="seg">
-      <button class="chip" data-m="keys">Teclado</button>
-      <button class="chip" data-m="gyro">Giroscopio</button>
-      <button class="chip" data-m="touch">Táctil</button>
+  <section>
+    <h2>Controles</h2>
+    <div class="grid">
+      <div class="card"><h3>Teclado</h3><ul><li>Flechas o WASD para conducir</li><li>Espacio o ↓ para frenar</li><li>Esc para abrir el menú</li></ul></div>
+      <div class="card"><h3>Giroscopio</h3><ul><li>Inclina el móvil para girar</li><li>▲ acelera a la derecha</li><li>■ frena a la izquierda</li></ul></div>
+      <div class="card"><h3>Táctil</h3><ul><li>◀ ▶ para girar</li><li>Acelerador automático</li><li>FRENO en el centro</li></ul></div>
     </div>
-    <div class="label">Sensibilidad de giro</div>
-    <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
-    <button class="primary" id="resume">Continuar</button>
-    <button class="chip" id="quit">Salir al menú</button>
-  </div>
-</div>
+  </section>
 
-<div id="over" class="overlay hidden">
-  <div class="card glass">
-    <div class="label">Carrera terminada</div>
-    <h1 id="ovDist">0 km</h1>
-    <p class="sub" id="ovInfo"></p>
-    <button class="primary" id="retry">Reintentar</button>
-    <button class="chip" id="menuBtn">Menú principal</button>
-  </div>
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="js/core.js"></script>
-<script src="js/game.js"></script>
+  <section>
+    <h2>Instalar la app</h2>
+    <ol>
+      <li>En Chrome o Edge, usa el icono de instalar de la barra de direcciones.</li>
+      <li>En iPhone, usa Compartir → «Añadir a pantalla de inicio».</li>
+      <li>En Android, usa el menú del navegador → «Instalar aplicación».</li>
+    </ol>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Endless Stage · <a href="play.html">Ir al simulador</a></p>
+</footer>
 <script>
 if ('serviceWorker' in navigator) {
   addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
