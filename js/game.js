@@ -203,7 +203,7 @@ function init(M) {
   const TM = TERR.map(t => {
     const snow = t.name === 'Nieve';
     return {
-      road: pool(snow ? 'snow' : 'asphalt', THREE.MeshLambertMaterial, { map: snow ? TX.snow : TX.asphalt, color: t.road, side: DS, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      road: pool(snow ? 'snow' : 'asphalt', THREE.MeshLambertMaterial, { map: snow ? TX.snow : TX.asphalt, color: t.road, side: DS, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
       grass: pool(snow ? 'snow' : 'grass', THREE.MeshLambertMaterial, { map: snow ? TX.snow : TX.grass, color: t.grass, side: DS, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
     };
   });
@@ -211,7 +211,7 @@ function init(M) {
   const TMB = TERR.map(t => {
     const snow = t.name === 'Nieve';
     return [0.25, 0.5, 0.75, 1].map(op => ({
-      road: new THREE.MeshLambertMaterial({ map: snow ? TX.snow : TX.asphalt, color: t.road, side: DS, transparent: op < 1, opacity: op, depthWrite: op >= 1, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }),
+      road: new THREE.MeshLambertMaterial({ map: snow ? TX.snow : TX.asphalt, color: t.road, side: DS, transparent: op < 1, opacity: op, depthWrite: op >= 1, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
       grass: new THREE.MeshLambertMaterial({ map: snow ? TX.snow : TX.grass, color: t.grass, side: DS, transparent: op < 1, opacity: op, depthWrite: op >= 1, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
     }));
   });
@@ -281,6 +281,7 @@ function init(M) {
   const SHADOW_MAT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
   // Árboles low poly: 64 variantes (forma, tamaño, color, copas) con tronco en el suelo y ramas que unen las copas
   const TREE_LP = true;
+  const DEBUG = /[?&]debug=1/.test(location.search);
   const LP_MAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
   const buildLP = snow => {
     const out = [], UP = new THREE.Vector3(0, 1, 0), ZERO = new THREE.Vector3(), ONE = new THREE.Vector3(1, 1, 1), IDQ = new THREE.Quaternion();
@@ -397,7 +398,7 @@ function init(M) {
   function groundY(p, a) {
     const q = ptAt(p, a), f0 = clamp((Math.abs(a) - 11) / 12, 0, 1), f = f0 * f0 * (3 - 2 * f0);
     const dep = 3.5 * (p.b / BRIDGE_H);
-    return (p.y - p.b - 0.6) - dep * (1 - f) + f * hills(q.x, q.z);
+    return (p.y - p.b - 0.1) - dep * (1 - f) + f * hills(q.x, q.z);
   }
   // Cinta entre dos desplazamientos laterales; ya/yb pueden ser números o funciones del índice
   function ribbon(list, a, ya, b, yb, mask) {
@@ -673,25 +674,23 @@ function init(M) {
       }
     }
   }
-  // Patrones: recta, curva, chicane (dos curvas opuestas casi seguidas) o curvas enlazadas
+  // Patrones: rectas cortas; las largas llevan chicane; curvas de 60° a 180° con radio de 10 a 40 m
   function buildPattern() {
     const sgn = () => (Math.random() < 0.5 ? -1 : 1);
-    const seg = (k, n) => segQueue.push({ k, n: Math.floor(n) });
+    const seg = (k, n) => segQueue.push({ k, n: Math.max(1, Math.floor(n)) });
+    // Curva de ángulo A (grados) y radio r (m): curvatura k = 1/r, longitud n = A / (k·STEP) puntos
+    const curve = (sign, A, r) => { const k = 1 / r; seg(sign * k, (A * Math.PI / 180) / (k * STEP)); };
+    const randCurve = sign => curve(sign, rnd(60, 180), rnd(10, 40));
+    const chicane = sg => { const A = rnd(60, 100), rr = rnd(15, 30); curve(sg, A, rr); seg(0, 2); curve(-sg, A, rr); };
     const r = Math.random();
-    if (r < 0.2) seg(0, rnd(30, 70));
-    else if (r < 0.5) seg(sgn() * rnd(0.01, 0.02), rnd(12, 30));
-    else if (r < 0.75) {
-      const k = sgn() * rnd(0.016, 0.024);
-      seg(k, rnd(8, 12)); seg(0, 3); seg(-k, rnd(8, 12)); seg(0, rnd(20, 40));
-    } else {
+    if (r < 0.35) seg(0, rnd(6, 16));
+    else if (r < 0.45) { seg(0, rnd(30, 45)); chicane(sgn()); }
+    else if (r < 0.7) randCurve(sgn());
+    else if (r < 0.85) chicane(sgn());
+    else {
       let d = sgn();
       const count = Math.floor(rnd(2, 4));
-      for (let j = 0; j < count; j++) {
-        seg(d * rnd(0.012, 0.02), rnd(10, 22));
-        seg(0, rnd(4, 9));
-        if (Math.random() < 0.4) d = -d;
-      }
-      seg(0, rnd(30, 60));
+      for (let j = 0; j < count; j++) { randCurve(d); seg(0, rnd(2, 6)); if (Math.random() < 0.4) d = -d; }
     }
   }
   function extend(n) {
@@ -704,9 +703,10 @@ function init(M) {
         gT = sg.k; gTimer = sg.n;
       }
       gTimer--;
-      gk += (gT - gk) * 0.15;
+      gk += (gT - gk) * 0.35;
       gh += gk * STEP;
       gslope = clamp(gslope * 0.97 + (Math.random() - 0.5) * 0.03, -0.18, 0.18);
+      if (Math.random() < 0.01) gslope = clamp(gslope + (Math.random() < 0.5 ? -1 : 1) * 0.16, -0.2, 0.2);
       gy += gslope * STEP;
       gx += Math.sin(gh) * STEP;
       gz += Math.cos(gh) * STEP;
@@ -745,16 +745,8 @@ function init(M) {
     add(groundMesh(list), pick(TM[t].grass));
     add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), pick(TM[t].road));
     // Arcén de asfalto que continúa más allá de las barreras, a nivel del terreno
-    const yf = a => i => groundY(list[i], a) - list[i].y + 0.03;
+    const yf = a => i => groundY(list[i], a) - list[i].y + 0.1;
     for (const sg of [-1, 1]) add(ribbon(list, sg * ROAD_W / 2, yf(sg * ROAD_W / 2), sg * (ROAD_W / 2 + 4.4), yf(sg * ROAD_W / 2)), pick(TM[t].road));
-    const prevT = c > 0 ? terrMap.get(c - 1) : undefined;
-    if (prevT !== undefined && prevT !== t) {
-      for (let j = 0; j < 4; j++) {
-        const seg = list.slice(j * 5, j * 5 + 6), o = TMB[t][j];
-        add(groundMesh(seg, LAT.filter(x => x < -5.5)), o.grass);
-        add(groundMesh(seg, LAT.filter(x => x > 5.5)), o.grass);
-      }
-    }
     if (t === 0) add(dashes(list), MAT.line);
     // Marcas de neumáticos por tramos, en los dos carriles
     for (const lane of [-ROAD_W * 0.25, ROAD_W * 0.25]) if (Math.random() < 0.5)
@@ -783,12 +775,17 @@ function init(M) {
         m.userData.own = false; g.add(m);
       }
     }
-    // Montañas lejanas, de siluetas distintas y con rotación aleatoria
+    // Montañas lejanas, fuera del trazado: se descartan si quedarían cerca de la carretera
     if (Math.random() < 0.18) {
-      const side = pick([-1, 1]), q = ptAt(list[10], side * rnd(200, 320)), r = rnd(70, 160), hgt = rnd(90, 220);
-      const m = new THREE.Mesh(MOUNT, MAT.mountain);
-      m.scale.set(r, hgt, r); m.position.set(q.x, list[10].y - 10, q.z); m.rotation.y = rnd(0, 6.28);
-      m.userData.own = false; g.add(m);
+      const side = pick([-1, 1]), q = ptAt(list[10], side * rnd(330, 450)), r = rnd(120, 200), hgt = rnd(40, 110);
+      let clear = true;
+      for (let i = Math.max(0, c * CH - 100); i < pts.length && clear; i += 2)
+        if (Math.hypot(pts[i].x - q.x, pts[i].z - q.z) < r + 60) clear = false;
+      if (clear) {
+        const m = new THREE.Mesh(MOUNT, MAT.mountain);
+        m.scale.set(r, hgt, r); m.position.set(q.x, list[10].y - 10, q.z); m.rotation.y = rnd(0, 6.28);
+        m.userData.own = false; g.add(m);
+      }
     }
     // Árboles y casas detrás de las barreras: cuadrícula densa, ~90 % ocupada
     for (let i = 0; i < CH; i += 2) {
@@ -1100,7 +1097,7 @@ function init(M) {
     try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
     try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {}
     resetTrack();
-    Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, time: 60, nextCP: 500, dist: 0, state: 'playing', terr: -1, cd: 0, hp: 100, cam: null, prevBest: S.best, beat: false });
+    Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, time: 60, nextCP: 500, dist: 0, state: 'playing', terr: -1, cd: 0, hp: 100, cam: null, prevBest: S.best, beat: false, air: false, vy: 0, ry: undefined, rv: undefined });
     updateTrack(0);
     sync();
   }
@@ -1120,7 +1117,7 @@ function init(M) {
     $('restartMenu').classList.add('hidden');
     resetTrack();
     updateTrack(0);
-    Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, dist: 0, terr: -1, cam: null });
+    Object.assign(S, { p: 0, speed: 0, lat: 0, rel: 0, lv: 0, steer: 0, dist: 0, terr: -1, cam: null, air: false, vy: 0, ry: undefined, rv: undefined });
     sync();
   }
   let toastT = null;
@@ -1144,6 +1141,23 @@ function init(M) {
   $('pauseBtn').onclick = togglePause;
 
   // ---------- Física ----------
+  // Saltos: si el suelo cae bruscamente bajo un coche rápido, el coche despega y aterriza con daño
+  function airPhysics(dt) {
+    const c = sample(S.p), ry = c.y;
+    const rv = dt > 0 ? (ry - (S.ry ?? ry)) / dt : 0;
+    const ra = dt > 0 ? (rv - (S.rv ?? rv)) / dt : 0;
+    S.ry = ry; S.rv = rv;
+    if (!S.air) {
+      if (ra < -15 && S.speed > 12) { S.air = true; S.vy = rv; }
+      S.ay = ry;
+    } else {
+      S.vy -= 9.8 * dt; S.ay += S.vy * dt;
+      if (S.ay <= ry) {
+        if (S.vy < -10) S.hp = Math.max(0, S.hp - (-S.vy) * 0.8);
+        S.air = false; S.ay = ry; S.vy = 0;
+      }
+    }
+  }
   function physics(dt, inp) {
     const T = terrAt(S.p);
     S.terr = TERR.indexOf(T);
@@ -1181,7 +1195,7 @@ function init(M) {
         S.speed *= 0.6; // rompe la barrera: el coche sale a la hierba
       } else {
         S.lat = Math.sign(S.lat) * LIM;
-        if (hit) { S.speed *= 0.85; S.rel *= 0.3; }
+        if (hit) { S.speed *= 0.85; S.rel *= 0.3; S.lv = 0; }
       }
     }
     if (Math.abs(S.lat) > RW / 2 + 0.5) S.speed *= 1 - 0.5 * dt;
@@ -1189,6 +1203,7 @@ function init(M) {
     S.p = Math.max(0, S.p + vx / STEP);
     if (S.p === 0 && vx < 0) S.speed = 0;
     S.dist = S.p * STEP;
+    airPhysics(dt);
 
     if (S.state === 'playing' && S.hp <= 0) end();
   }
@@ -1226,7 +1241,7 @@ function init(M) {
     const TH = 0.0025, items = [];
     let st = -1, dir = 0, quiet = 0, maxK = 0, sum = 0;
     const close = () => {
-      if (Math.abs(sum) > 0.35) items.push({ kind: 'curve', start: st, ang: sum, maxK });   // ang > 0 = izquierda
+      if (Math.abs(sum) > 1.0) items.push({ kind: 'curve', start: st, ang: sum, maxK });   // ang > 0 = izquierda
       st = -1; dir = 0; quiet = 0; maxK = 0; sum = 0;
     };
     for (let i = from; i <= last; i++) {
@@ -1250,7 +1265,7 @@ function init(M) {
       return d < 1000 ? Math.round(d / 10) * 10 + 'm' : (d / 1000).toFixed(1) + 'km';
     };
     const color = it => it.kind === 'obs' ? '#ff5a5a'
-      : it.maxK < 0.01 ? '#7dff9b' : it.maxK < 0.016 ? '#ffd166' : '#ff5a5a';
+      : Math.abs(it.ang) < 1.57 ? '#7dff9b' : Math.abs(it.ang) < 2.36 ? '#ffd166' : '#ff5a5a';
     const show = (el, it) => {
       const key = it.kind === 'obs' ? 'obstacle' : it.ang > 0 ? 'left' : 'right';
       const ico = el.querySelector('.ico');
@@ -1350,7 +1365,7 @@ function init(M) {
     // Cámara en primera persona a 1.4 m del suelo
     const c = sample(S.p);
     const rx = -Math.cos(c.h), rz = Math.sin(c.h);
-    const ex = c.x + rx * S.lat, ey = c.y + 1.4, ez = c.z + rz * S.lat;
+    const ex = c.x + rx * S.lat, ey = (S.ay ?? c.y) + 1.4, ez = c.z + rz * S.lat;
     const yaw = c.h - S.rel;
     if (!S.cam) S.cam = { x: ex, y: ey, z: ez, yaw };
     const kp = 1 - Math.exp(-dt * 18), ky = 1 - Math.exp(-dt * 10);
@@ -1385,6 +1400,14 @@ function init(M) {
       envTo.set(ENVC[terrAt(S.p).name]);
       envCol.lerp(envTo, 1 - Math.exp(-dt * 1.5));
       scene.background.copy(envCol); scene.fog.color.copy(envCol);
+    }
+    if (DEBUG && S.state !== 'menu') {
+      const c0 = sample(S.p), pp = pts[Math.min(Math.floor(S.p), pts.length - 1)];
+      const g0 = groundY(pp, 0), gL = groundY(pp, -4), gR = groundY(pp, 4);
+      $('dbg').textContent = 'carretera y=' + c0.y.toFixed(2) + '  suelo(0)=' + g0.toFixed(2) + '  suelo(-4)=' + gL.toFixed(2) +
+        '  suelo(+4)=' + gR.toFixed(2) + '\ncamara y=' + cam.position.y.toFixed(2) + '  S.ay=' + (S.ay ?? 0).toFixed(2) +
+        '  aire=' + !!S.air + '  p=' + S.p.toFixed(1) + '  ancho=' + (widthMap.get(Math.floor(S.p / CH)) ?? 0).toFixed(1);
+      $('dbg').classList.remove('hidden');
     }
     sun.position.set(S.cam.x - 80, S.cam.y + 120, S.cam.z + 60);
     sun.target.position.set(S.cam.x, S.cam.y - 1.4, S.cam.z);
