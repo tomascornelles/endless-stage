@@ -72,11 +72,11 @@
   <div class="card glass">
     <div><div class="label">Simulación de rally</div><h1>Endless <span>Stage</span></h1></div>
     <div class="tabs"><button class="tab on" data-tab="play">Gameplay</button><button class="tab" data-tab="ctl">Controles</button></div>
-    <button class="primary" id="go">Empezar carrera</button>
     <div class="pane" data-pane="play">
       <div class="label">Sensibilidad de giro</div>
       <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
-      <label class="row"><input type="checkbox" class="nightInput"> Modo noche</label>
+      <div class="label">Modo</div>
+      <div class="seg2 nightSeg"><button class="chip" data-night="0">Día</button><button class="chip" data-night="1">Noche</button></div>
       <p class="sub" id="bestMenu"></p>
       <button class="chip hidden" id="restartMenu">Reiniciar</button>
     </div>
@@ -89,6 +89,7 @@
       </div>
       <p class="sub" id="hint"></p>
     </div>
+    <button class="primary" id="go">Empezar carrera</button>
     <p class="sub hidden" id="notice" style="color:#ffd166;white-space:pre-line"></p>
     <p class="sub">Para instalarla: en Chrome o Edge usa el icono de instalar de la barra de direcciones. En iPhone o Android, «Añadir a pantalla de inicio».</p>
   </div>
@@ -99,11 +100,11 @@
     <div class="label">Pausa</div>
     <h1>En <span>pausa</span></h1>
     <div class="tabs"><button class="tab on" data-tab="play">Gameplay</button><button class="tab" data-tab="ctl">Controles</button></div>
-    <button class="primary" id="resume">Continuar</button>
     <div class="pane" data-pane="play">
       <div class="label">Sensibilidad de giro</div>
       <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
-      <label class="row"><input type="checkbox" class="nightInput"> Modo noche</label>
+      <div class="label">Modo</div>
+      <div class="seg2 nightSeg"><button class="chip" data-night="0">Día</button><button class="chip" data-night="1">Noche</button></div>
       <button class="chip" id="restartPause">Reiniciar</button>
       <button class="chip" id="quit">Salir al menú</button>
     </div>
@@ -115,6 +116,7 @@
         <button class="chip" data-m="touch">Táctil</button>
       </div>
     </div>
+    <button class="primary" id="resume">Continuar</button>
   </div>
 </div>
 

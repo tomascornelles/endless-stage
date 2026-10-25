@@ -1165,10 +1165,10 @@ function init(M) {
     sun.intensity = on ? 0 : 1.5;
     headL.intensity = on ? 4 : 0;
     cloudMats.forEach(mt => mt.color.set(on ? 0x5a6a80 : 0xffffff));
-    document.querySelectorAll('.nightInput').forEach(i => { i.checked = on; });
+    document.querySelectorAll('.nightSeg [data-night]').forEach(b => b.classList.toggle('on', (b.dataset.night === '1') === on));
     try { localStorage.setItem('endless_stage_night', on ? '1' : '0'); } catch (e) {}
   }
-  document.querySelectorAll('.nightInput').forEach(i => i.addEventListener('change', () => setNight(i.checked)));
+  document.querySelectorAll('.nightSeg [data-night]').forEach(b => b.addEventListener('click', () => setNight(b.dataset.night === '1')));
   document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
     const card = b.closest('.card');
     card.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === b));
