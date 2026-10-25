@@ -73,8 +73,6 @@
     <div><div class="label">Simulación de rally</div><h1>Endless <span>Stage</span></h1></div>
     <div class="tabs"><button class="tab on" data-tab="play">Gameplay</button><button class="tab" data-tab="ctl">Controles</button></div>
     <div class="pane" data-pane="play">
-      <div class="label">Sensibilidad de giro</div>
-      <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
       <div class="label">Modo</div>
       <div class="seg2 nightSeg"><button class="chip" data-night="0">Día</button><button class="chip" data-night="1">Noche</button></div>
       <p class="sub" id="bestMenu"></p>
@@ -82,11 +80,13 @@
     </div>
     <div class="pane hidden" data-pane="ctl">
       <div class="label">Control</div>
-      <div class="seg">
+      <div class="seg2">
         <button class="chip" data-m="keys">Teclado</button>
         <button class="chip" data-m="gyro">Giroscopio</button>
         <button class="chip" data-m="touch">Táctil</button>
       </div>
+      <div class="label">Sensibilidad de giro</div>
+      <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
       <p class="sub" id="hint"></p>
     </div>
     <button class="primary" id="go">Empezar carrera</button>
@@ -97,12 +97,9 @@
 
 <div id="pause" class="overlay hidden">
   <div class="card glass">
-    <div class="label">Pausa</div>
     <h1>En <span>pausa</span></h1>
     <div class="tabs"><button class="tab on" data-tab="play">Gameplay</button><button class="tab" data-tab="ctl">Controles</button></div>
     <div class="pane" data-pane="play">
-      <div class="label">Sensibilidad de giro</div>
-      <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
       <div class="label">Modo</div>
       <div class="seg2 nightSeg"><button class="chip" data-night="0">Día</button><button class="chip" data-night="1">Noche</button></div>
       <button class="chip" id="restartPause">Reiniciar</button>
@@ -110,11 +107,13 @@
     </div>
     <div class="pane hidden" data-pane="ctl">
       <div class="label">Control</div>
-      <div class="seg">
+      <div class="seg2">
         <button class="chip" data-m="keys">Teclado</button>
         <button class="chip" data-m="gyro">Giroscopio</button>
         <button class="chip" data-m="touch">Táctil</button>
       </div>
+      <div class="label">Sensibilidad de giro</div>
+      <input type="range" class="sensInput" min="0.5" max="2" step="0.1" value="1">
     </div>
     <button class="primary" id="resume">Continuar</button>
   </div>

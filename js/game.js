@@ -1026,8 +1026,11 @@ function init(M) {
 
     const c = sample(S.p);
     S.steer += (inp.steer - S.steer) * Math.min(1, dt * 7);
-    const gr = 1 - (1 - T.grip) * clamp(S.speed / 35, 0, 1);
-    const turn = S.steer * 2.2 * S.sens * gr * Math.min(1, S.speed / 12);
+    // Frenar girando pierde agarre: el coche derrapa (más con más velocidad)
+    const gr0 = 1 - (1 - T.grip) * clamp(S.speed / 35, 0, 1);
+    const skid = inp.brake * Math.abs(S.steer) * clamp(S.speed / 20, 0, 1);
+    const gr = gr0 * (1 - 0.6 * skid);
+    const turn = S.steer * 2.2 * S.sens * gr * Math.min(1, S.speed / 12) + S.steer * skid * 1.2;
     S.rel += (turn + c.k * S.speed - S.rel * 0.12 * gr) * dt;
     S.rel = clamp(S.rel, -1.5, 1.5);
     S.lat += S.speed * Math.sin(S.rel) * dt;
