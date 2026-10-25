@@ -394,9 +394,9 @@ function init(M) {
   resize();
 
   // ---------- Relieve y geometría ----------
-  function ptAt(p, a) { return { x: p.x - Math.cos(p.h) * a, z: p.z + Math.sin(p.h) * a }; }
+  function ptAt(p, a) { a = latEff(p, a); return { x: p.x - Math.cos(p.h) * a, z: p.z + Math.sin(p.h) * a }; }
   function groundY(p, a) {
-    const q = ptAt(p, a), f0 = clamp((Math.abs(a) - 11) / 12, 0, 1), f = f0 * f0 * (3 - 2 * f0);
+    const ae = latEff(p, a), q = ptAt(p, ae), f0 = clamp((Math.abs(ae) - 11) / 12, 0, 1), f = f0 * f0 * (3 - 2 * f0);
     const dep = 3.5 * (p.b / BRIDGE_H);
     return (p.y - p.b - 0.1) - dep * (1 - f) + f * hills(q.x, q.z);
   }
@@ -742,7 +742,10 @@ function init(M) {
     const g = new THREE.Group();
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
 
-    add(groundMesh(list), pick(TM[t].grass));
+    // La hierba no existe bajo la carretera: solo se dibuja fuera del arcén
+    const gm = pick(TM[t].grass);
+    add(groundMesh(list, LAT.filter(x => x < -5.5)), gm);
+    add(groundMesh(list, LAT.filter(x => x > 5.5)), gm);
     add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), pick(TM[t].road));
     // Arcén de asfalto que continúa más allá de las barreras, a nivel del terreno
     const yf = a => i => groundY(list[i], a) - list[i].y + 0.1;
@@ -775,18 +778,6 @@ function init(M) {
         m.userData.own = false; g.add(m);
       }
     }
-    // Montañas lejanas, fuera del trazado: se descartan si quedarían cerca de la carretera
-    if (Math.random() < 0.18) {
-      const side = pick([-1, 1]), q = ptAt(list[10], side * rnd(330, 450)), r = rnd(120, 200), hgt = rnd(40, 110);
-      let clear = true;
-      for (let i = Math.max(0, c * CH - 100); i < pts.length && clear; i += 2)
-        if (Math.hypot(pts[i].x - q.x, pts[i].z - q.z) < r + 60) clear = false;
-      if (clear) {
-        const m = new THREE.Mesh(MOUNT, MAT.mountain);
-        m.scale.set(r, hgt, r); m.position.set(q.x, list[10].y - 10, q.z); m.rotation.y = rnd(0, 6.28);
-        m.userData.own = false; g.add(m);
-      }
-    }
     // Árboles y casas detrás de las barreras: cuadrícula densa, ~90 % ocupada
     for (let i = 0; i < CH; i += 2) {
       const p = list[i];
@@ -794,11 +785,13 @@ function init(M) {
         if (Math.random() > 0.9) continue;
         if (zone === 'pueblo' && col < 2 && Math.random() < 0.35) {
           const ah = side * (BAR + 7 + col * 6), qh = ptAt(p, ah);
+          if (latEff(p, ah) !== ah) continue;
           addHouse(g, qh.x, groundY(p, ah), qh.z, p.h, c, t === 2);
           continue;
         }
         {
           const a = side * (BAR + 3 + col * 6 + rnd(-1, 1)), q = ptAt(p, a), y = groundY(p, a);
+          if (latEff(p, a) !== a) continue;
           if (TREE_LP) {
             const t = new THREE.Mesh(pick(snowC ? LP_SNOW : LP), LP_MAT);
             t.scale.setScalar(rnd(1.0, 1.5));
@@ -826,6 +819,7 @@ function init(M) {
     {
       const crowd = new Map();
       const place = (p, a) => {
+        if (latEff(p, a) !== a) return;
         const q = ptAt(p, a), v = Math.floor(Math.random() * PPL.length);
         if (!crowd.has(v)) crowd.set(v, []);
         crowd.get(v).push({ x: q.x, y: groundY(p, a), z: q.z, ry: Math.random() * 6.28 });
