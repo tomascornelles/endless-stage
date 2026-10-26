@@ -1,7 +1,7 @@
 // Endless Stage · Service Worker
 // Mismos archivos propios: red primero (para recibir cambios) y caché como respaldo offline.
 // CDN de Three.js: caché primero (versión fija).
-const VERSION = 'endless-stage-v2';
+const VERSION = 'endless-stage-v3';
 const CORE = [
   './', 'index.html', 'play.html', 'css/style.css', 'js/core.js', 'js/game.js', 'manifest.webmanifest', 'favicon.svg',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png',

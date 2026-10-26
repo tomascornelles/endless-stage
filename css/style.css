@@ -158,3 +158,10 @@ body.night #hud .lcd{background:rgba(2,6,12,.75)}
 #touch[data-m=gyro] .zone[data-c=B]{width:128px;height:128px}
 #touch[data-m=gyro] .zone[data-c=G]{width:108px;height:144px}
 #touch .zone svg{width:56px;height:56px}
+
+/* v24: controles de 92 px; acelerador de 96 x 128 */
+#touch[data-m=touch] .zone[data-c=L],#touch[data-m=touch] .zone[data-c=R]{width:92px;height:92px}
+#touch[data-m=touch] .zone[data-c=B]{flex:1;height:92px}
+#touch[data-m=gyro] .zone[data-c=B]{width:92px;height:92px}
+#touch[data-m=gyro] .zone[data-c=G]{width:96px;height:128px}
+#touch .zone svg{width:40px;height:40px}
