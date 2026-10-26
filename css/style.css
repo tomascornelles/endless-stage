@@ -151,3 +151,10 @@ body.night #hud .lcd{background:rgba(2,6,12,.75)}
 
 /* v22: al abrir un menú se desenfoca lo que queda detrás */
 .overlay{backdrop-filter:blur(10px) saturate(120%);-webkit-backdrop-filter:blur(10px) saturate(120%)}
+
+/* v23: controles táctiles el doble de grandes */
+#touch[data-m=touch] .zone[data-c=L],#touch[data-m=touch] .zone[data-c=R]{width:128px;height:128px}
+#touch[data-m=touch] .zone[data-c=B]{flex:1;height:128px}
+#touch[data-m=gyro] .zone[data-c=B]{width:128px;height:128px}
+#touch[data-m=gyro] .zone[data-c=G]{width:108px;height:144px}
+#touch .zone svg{width:56px;height:56px}

@@ -680,8 +680,8 @@ function init(M) {
     const seg = (k, n) => segQueue.push({ k, n: Math.max(1, Math.floor(n)) });
     // Curva de ángulo A (grados) y radio r (m): curvatura k = 1/r, longitud n = A / (k·STEP) puntos
     const curve = (sign, A, r) => { const k = 1 / r; seg(sign * k, (A * Math.PI / 180) / (k * STEP)); };
-    const randCurve = sign => curve(sign, rnd(60, 180), rnd(10, 40));
-    const chicane = sg => { const A = rnd(60, 100), rr = rnd(15, 30); curve(sg, A, rr); seg(0, 2); curve(-sg, A, rr); };
+    const randCurve = sign => { curve(sign, rnd(60, 180), rnd(10, 40)); seg(0, rnd(12, 20)); };
+    const chicane = sg => { const A = rnd(60, 100), rr = rnd(15, 30); curve(sg, A, rr); seg(0, 6); curve(-sg, A, rr); seg(0, rnd(12, 20)); };
     const r = Math.random();
     if (r < 0.35) seg(0, rnd(6, 16));
     else if (r < 0.45) { seg(0, rnd(30, 45)); chicane(sgn()); }
@@ -690,7 +690,7 @@ function init(M) {
     else {
       let d = sgn();
       const count = Math.floor(rnd(2, 4));
-      for (let j = 0; j < count; j++) { randCurve(d); seg(0, rnd(2, 6)); if (Math.random() < 0.4) d = -d; }
+      for (let j = 0; j < count; j++) { randCurve(d); if (Math.random() < 0.4) d = -d; }
     }
   }
   function extend(n) {
@@ -705,8 +705,8 @@ function init(M) {
       gTimer--;
       gk += (gT - gk) * 0.35;
       gh += gk * STEP;
-      gslope = clamp(gslope * 0.97 + (Math.random() - 0.5) * 0.03, -0.18, 0.18);
-      if (Math.random() < 0.01) gslope = clamp(gslope + (Math.random() < 0.5 ? -1 : 1) * 0.16, -0.2, 0.2);
+      gslope = clamp(gslope * 0.97 + (Math.random() - 0.5) * (Math.abs(gk) < 0.002 ? 0.03 : 0.006), -0.18, 0.18);
+      if (Math.abs(gk) < 0.002 && Math.random() < 0.01) gslope = clamp(gslope + (Math.random() < 0.5 ? -1 : 1) * 0.12, -0.2, 0.2);
       gy += gslope * STEP;
       gx += Math.sin(gh) * STEP;
       gz += Math.cos(gh) * STEP;
