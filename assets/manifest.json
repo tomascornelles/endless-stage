@@ -84,14 +84,12 @@
     "tire": 1,
     "snow": 1,
     "guardrail": 1,
-    "wave": 1,
+    "wave": 0.25,
+    "stone": 0.5,
     "wheel": 1,
     "log": 1,
     "cone": 0.4
   },
   "arrows": {
-    "left": "assets/ui/turn_left.svg",
-    "right": "assets/ui/turn_right.svg",
-    "obstacle": "assets/ui/obstacle.svg"
   }
 }

@@ -10,6 +10,7 @@ const TERR = [
   { name: 'Barro',   road: 0x8a6a4a, grass: 0x7d9a5a, max: 42, acc: 0.7, grip: 0.5 }
 ];
 const $ = id => document.getElementById(id);
+const DEBUG = /[?&]debug=1/.test(location.search);
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
@@ -23,7 +24,7 @@ const FB_ICONS = {
 // Avisos visibles en el menú para diagnosticar recursos que no cargan
 const notice = msg => {
   const el = document.getElementById('notice');
-  if (!el) return;
+  if (!el || !DEBUG) return;
   el.classList.remove('hidden');
   el.textContent += (el.textContent ? '\n' : '') + msg;
 };
@@ -353,9 +354,9 @@ function init(M) {
 
   // ---------- Three.js ----------
   const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true, logarithmicDepthBuffer: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   const SKY = 0x8fd3ff;
@@ -378,7 +379,7 @@ function init(M) {
   sun.position.set(-80, 120, 60);
   // Sombras del sol: la zona de sombra sigue al coche (unos 140 m)
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.0008;
@@ -395,12 +396,117 @@ function init(M) {
 
   // ---------- Relieve y geometría ----------
   function ptAt(p, a) { a = latEff(p, a); return { x: p.x - Math.cos(p.h) * a, z: p.z + Math.sin(p.h) * a }; }
+  // Campo de alturas: en cada punto, la altura del trazado más cercano. A menos de 5 m coincide con la pista;
+  // de 5 a 25 m se funde con el relieve natural. Así el terreno nunca invade la calzada ni deja huecos.
+  function nearestTrack(x, z) {
+    const cx = Math.floor(x / 16), cz = Math.floor(z / 16);
+    let best = -1, bd = Infinity;
+    for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
+      const L = grid.get((cx + dx) + ',' + (cz + dz));
+      if (!L) continue;
+      for (const j of L) {
+        const o = pts[j], d = (o.x - x) ** 2 + (o.z - z) ** 2;
+        if (d < bd) { bd = d; best = j; }
+      }
+    }
+    return { j: best, d: Math.sqrt(bd) };
+  }
+  function fieldAt(x, z) {
+    const n = nearestTrack(x, z);
+    if (n.j < 0) return -1;
+    const p = pts[n.j];
+    const base = p.y - p.b - 0.1 - 3.5 * (p.b / BRIDGE_H);
+    const w = clamp((n.d - 5) / 20, 0, 1), sm = w * w * (3 - 2 * w);
+    return base + sm * hills(x, z);
+  }
+  // ---------- Mapa de alturas: teselas de 500 x 500 m, malla de 4 m ----------
+  const TILE = 500, RES = 10, NT = TILE / RES;
+  function tileHeight(x, z) {
+    return 45 + 14 * Math.sin(x / 420) * Math.cos(z / 520) + 8 * Math.sin((x + z) / 380 + 0.7) + 4 * Math.sin(z / 260 - x / 300);
+  }
+  function ensureTile(tx, tz) {
+    const key = tx + ',' + tz;
+    if (tiles.has(key)) return;
+    const ox = tx * TILE, oz = tz * TILE, N1 = NT + 1, H = new Float32Array(N1 * N1);
+    for (let i = 0; i < N1; i++) for (let k = 0; k < N1; k++) H[i * N1 + k] = tileHeight(ox + i * RES, oz + k * RES);
+    const pos = new Float32Array(N1 * N1 * 3);
+    for (let i = 0; i < N1; i++) for (let k = 0; k < N1; k++) {
+      const o = (i * N1 + k) * 3;
+      pos[o] = ox + i * RES; pos[o + 1] = H[i * N1 + k]; pos[o + 2] = oz + k * RES;
+    }
+    const gI = [], sI = [];
+    for (let i = 0; i < NT; i++) for (let k = 0; k < NT; k++) {
+      const a = i * N1 + k, b = (i + 1) * N1 + k, c = (i + 1) * N1 + k + 1, d = i * N1 + k + 1;
+      const avg = (H[a] + H[b] + H[c] + H[d]) / 4;
+      (avg > 52 ? sI : gI).push(a, d, b, b, d, c);   // por encima de 52 m: nieve
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(gI.concat(sI));
+    g.addGroup(0, gI.length, 0);
+    g.addGroup(gI.length, sI.length, 1);
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, [pick(TM[0].grass), pick(TM[2].grass)]);
+    mesh.receiveShadow = true;
+    world.add(mesh);
+    tiles.set(key, { tx, tz, H, mesh });
+  }
+  function ensureAround(x, z) {
+    const tx = Math.floor(x / TILE), tz = Math.floor(z / TILE);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) ensureTile(tx + dx, tz + dz);
+  }
+  function cullTiles(p) {
+    const cp = pts[Math.min(Math.floor(p), pts.length - 1)];
+    if (!cp) return;
+    for (const [k, t] of tiles) {
+      const dx = (t.tx + 0.5) * TILE - cp.x, dz = (t.tz + 0.5) * TILE - cp.z;
+      if (Math.hypot(dx, dz) > 1600) { world.remove(t.mesh); t.mesh.geometry.dispose(); tiles.delete(k); }
+    }
+  }
+  function terrainAt(x, z) {
+    const tx = Math.floor(x / TILE), tz = Math.floor(z / TILE);
+    ensureTile(tx, tz);
+    const t = tiles.get(tx + ',' + tz), N1 = NT + 1;
+    const u = (x - tx * TILE) / RES, v = (z - tz * TILE) / RES;
+    const i = Math.min(NT - 1, Math.floor(u)), k = Math.min(NT - 1, Math.floor(v)), fu = u - i, fv = v - k;
+    const H = t.H;
+    const h00 = H[i * N1 + k], h10 = H[(i + 1) * N1 + k], h01 = H[i * N1 + k + 1], h11 = H[(i + 1) * N1 + k + 1];
+    return (h00 * (1 - fu) + h10 * fu) * (1 - fv) + (h01 * (1 - fu) + h11 * fu) * fv;
+  }
+  // Altura de un punto de la pista: un plano por encima del terreno más alto de su huella (calzada + 2 m a cada lado)
+  function roadY(x, z, h) {
+    let top = -Infinity;
+    for (const along of [-1.5, 0, 1.5]) for (const lat of [-7.4, -3.7, 0, 3.7, 7.4]) {
+      const sx = x + Math.sin(h) * along - Math.cos(h) * lat, sz = z + Math.cos(h) * along + Math.sin(h) * lat;
+      top = Math.max(top, terrainAt(sx, sz));
+    }
+    return top + 0.3;
+  }
   function groundY(p, a) {
-    const ae = latEff(p, a), q = ptAt(p, ae), f0 = clamp((Math.abs(ae) - 11) / 12, 0, 1), f = f0 * f0 * (3 - 2 * f0);
-    const dep = 3.5 * (p.b / BRIDGE_H);
-    return (p.y - p.b - 0.1) - dep * (1 - f) + f * hills(q.x, q.z);
+    const q = ptAt(p, a);
+    return terrainAt(q.x, q.z);
   }
   // Cinta entre dos desplazamientos laterales; ya/yb pueden ser números o funciones del índice
+  function terrainMesh(c, list) {
+    const S4 = 4, M = 60;
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of list) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    const i0 = Math.floor((x0 - M) / S4), i1 = Math.ceil((x1 + M) / S4);
+    const k0 = Math.floor((z0 - M) / S4), k1 = Math.ceil((z1 + M) / S4);
+    const pos = [], idx = [];
+    for (let i = i0; i < i1; i++) for (let k = k0; k < k1; k++) {
+      const n = nearestTrack((i + 0.5) * S4, (k + 0.5) * S4);
+      if (n.j < 0 || n.d > M || Math.floor(n.j / CH) !== c) continue;
+      const base = pos.length / 3;
+      for (const [a, b] of [[i, k], [i + 1, k], [i + 1, k + 1], [i, k + 1]]) pos.push(a * S4, fieldAt(a * S4, b * S4), b * S4);
+      idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
   function ribbon(list, a, ya, b, yb, mask) {
     const n = list.length, pos = new Float32Array(n * 6), uv = new Float32Array(n * 4), idx = [];
     for (let i = 0; i < n; i++) {
@@ -420,10 +526,35 @@ function init(M) {
   function dashes(list) {
     return ribbon(list, -0.15, 0.03, 0.15, 0.03, i => ((i >> 2) & 1) === 1);
   }
+  // Malla de hierba. En el interior de una curva, los vértices más allá del límite de la curva se fijan a ese límite
+  // (un mismo límite para todo el tramo). Así los vértices cercanos a la carretera mandan y convergen allí,
+  // y no se generan triángulos que crucen la calzada.
+  // Relleno bajo toda la pista: una lámina a una altura inferior a cualquier punto del tramo.
+  // Queda tapada por la hierba y la carretera; solo se ve en los huecos que dejan los recortes de las curvas.
+  function fillMesh(list, lats, y) {
+    const Mn = lats.length, n = list.length, pos = new Float32Array(n * Mn * 3), idx = [];
+    for (let i = 0; i < n; i++) for (let j = 0; j < Mn; j++) {
+      const p = list[i], a = lats[j];
+      pos.set([p.x - Math.cos(p.h) * a, y, p.z + Math.sin(p.h) * a], (i * Mn + j) * 3);
+    }
+    for (let i = 0; i < n - 1; i++) for (let j = 0; j < Mn - 1; j++) {
+      const a = i * Mn + j, b = a + 1, c = a + Mn, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
   function groundMesh(list, cols = LAT) {
+    let L = Infinity;
+    for (const p of list) if (Math.abs(p.k || 0) > 1e-6) L = Math.min(L, 0.92 / Math.abs(p.k));
     const Mn = cols.length, n = list.length, pos = new Float32Array(n * Mn * 3), uv = new Float32Array(n * Mn * 2), idx = [];
     for (let i = 0; i < n; i++) for (let j = 0; j < Mn; j++) {
-      const p = list[i], a = cols[j], q = ptAt(p, a), o = i * Mn + j;
+      const p = list[i], a0 = cols[j], o = i * Mn + j;
+      const a = (a0 * (p.k || 0) < 0 && Math.abs(a0) > L) ? Math.sign(a0) * L : a0;
+      const q = { x: p.x - Math.cos(p.h) * a, z: p.z + Math.sin(p.h) * a };
       pos.set([q.x, groundY(p, a), q.z], o * 3);
       uv.set([q.x / 4, q.z / 4], o * 2);
     }
@@ -600,7 +731,7 @@ function init(M) {
     const a = sgn * BAR;
     // Altura h sobre el terreno junto al muro, expresada respecto a la carretera de cada punto
     // Base de la barrera: terreno junto a la carretera, o tablero si está sobre un puente
-    const base = i => groundY(list[i], a) + list[i].b * (1 + 3.5 / BRIDGE_H);
+    const base = i => list[i].y - 0.2;
     const gy = h => i => base(i) - list[i].y + h;
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
     if (type === 'rail') {
@@ -616,8 +747,14 @@ function init(M) {
       wallVolume(list, a, a + sgn * 0.6, gy(0), gy(1.2), pick(MAT.stone), add);
     } else if (type === 'hay') {
       for (let i = 0; i < list.length - 1; i++) {
-        const p = list[i], q = ptAt(p, a + sgn * 0.9), m = new THREE.Mesh(HAY, pick(MAT.hay));
-        m.position.set(q.x, groundY(p, a + sgn * 0.9), q.z); m.scale.set(1.2, 0.9, 3); m.rotation.y = p.h; m.userData.own = false; g.add(m);
+        if (Math.random() < 0.3) continue;   // hueco entre balas
+        const p = list[i], lat = a + sgn * 0.9, q = ptAt(p, lat), m = new THREE.Mesh(HAY, pick(MAT.hay));
+        let top = -Infinity;
+        for (const al of [-0.6, 0, 0.6]) for (const al2 of [-1.5, 0, 1.5]) top = Math.max(top, terrainAt(q.x + Math.sin(p.h) * al2 - Math.cos(p.h) * al, q.z + Math.cos(p.h) * al2 + Math.sin(p.h) * al));
+        const sx = rnd(0.9, 1.1), sy = rnd(0.9, 1.1), sz = rnd(0.9, 1.1);
+        m.position.set(q.x, top + 0.05, q.z);
+        m.scale.set(1.2 * sx, 0.9 * sy, 3 * sz);
+        m.rotation.y = p.h; m.userData.own = false; g.add(m);
       }
     } else if (type === 'tyre') {
       const slots = [];
@@ -643,6 +780,7 @@ function init(M) {
   let pts = [], world = new THREE.Group(), chunks = new Map(), terrMap = new Map(), zoneMap = new Map();
   let grid = new Map(), bridges = [];
   const widthMap = new Map();
+  const tiles = new Map();
   const roadWidthAt = d => Math.max(2, 10 - 0.5 * d / 1000);
   scene.add(world);
   let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0, segQueue = [];
@@ -650,8 +788,10 @@ function init(M) {
   function resetTrack() {
     chunks.forEach(g => { world.remove(g); disposeChunk(g); });
     chunks.clear(); terrMap.clear(); zoneMap.clear(); grid = new Map(); bridges = []; houseCols = []; obsCols = []; widthMap.clear();
-    pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gy = 0; gz = 0; gT = 0; gTimer = 0; segQueue = [];
-    pts.push({ x: 0, y: 0, z: 0, h: 0, b: 0 });
+    pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gz = 0; gT = 0; gTimer = 0; segQueue = [];
+    ensureAround(0, 0);
+    gy = roadY(0, 0, 0);
+    pts.push({ x: 0, y: gy, z: 0, h: 0, b: 0 });
     grid.set('0,0', [0]);
   }
   function bridgeHeight(idx) { return bumpAt(bridges, idx, BRIDGE_H, BRIDGE_W); }
@@ -670,17 +810,18 @@ function init(M) {
       for (const i of L) {
         if (m - i < 80) continue;
         const o = pts[i];
-        if ((o.x - q.x) ** 2 + (o.z - q.z) ** 2 < 144) { bridges.push(m); applyBridge(m); return; }
+        if ((o.x - q.x) ** 2 + (o.z - q.z) ** 2 < 400) { bridges.push(m); applyBridge(m); return; }
       }
     }
   }
-  // Patrones: rectas cortas; las largas llevan chicane; curvas de 60° a 180° con radio de 10 a 40 m
-  function buildPattern() {
+  // Patrones: rectas cortas; las largas llevan chicane; curvas de 60° a 180° con radio de 10 a 40 m.
+  // Cada patrón se simula antes de aceptarlo: ningún punto puede quedar a menos de 12 m de la pista ya trazada.
+  function genPattern(out) {
     const sgn = () => (Math.random() < 0.5 ? -1 : 1);
-    const seg = (k, n) => segQueue.push({ k, n: Math.max(1, Math.floor(n)) });
+    const seg = (k, n) => out.push({ k, n: Math.max(1, Math.floor(n)) });
     // Curva de ángulo A (grados) y radio r (m): curvatura k = 1/r, longitud n = A / (k·STEP) puntos
     const curve = (sign, A, r) => { const k = 1 / r; seg(sign * k, (A * Math.PI / 180) / (k * STEP)); };
-    const randCurve = sign => { curve(sign, rnd(60, 180), rnd(10, 40)); seg(0, rnd(12, 20)); };
+    const randCurve = sign => { curve(sign, rnd(60, 120), rnd(10, 40)); seg(0, rnd(12, 20)); };
     const chicane = sg => { const A = rnd(60, 100), rr = rnd(15, 30); curve(sg, A, rr); seg(0, 6); curve(-sg, A, rr); seg(0, rnd(12, 20)); };
     const r = Math.random();
     if (r < 0.35) seg(0, rnd(6, 16));
@@ -692,6 +833,53 @@ function init(M) {
       const count = Math.floor(rnd(2, 4));
       for (let j = 0; j < count; j++) { randCurve(d); if (Math.random() < 0.4) d = -d; }
     }
+  }
+  // Simula un recorrido desde un estado {k,h,x,z} y mide su separación respecto a la pista ya trazada.
+  // c = pasos a menos de 20 m de un punto antiguo; minD = distancia mínima a la pista antigua.
+  function simulate(cand, st) {
+    let k = st.k, h = st.h, x = st.x, z = st.z, c = 0, minD = Infinity, mh = 0;
+    const limit = pts.length - 40, R2 = 20 * 20;
+    for (const sg of cand) for (let i = 0; i < sg.n; i++) {
+      k += (sg.k - k) * 0.35; h += k * STEP; x += Math.sin(h) * STEP; z += Math.cos(h) * STEP;
+      const cx = Math.floor(x / 16), cz = Math.floor(z / 16);
+      let dmin = Infinity;
+      for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) {
+        const L = grid.get((cx + dx) + ',' + (cz + dz));
+        if (!L) continue;
+        for (const j of L) {
+          if (j >= limit) continue;
+          const o = pts[j], d2 = (o.x - x) ** 2 + (o.z - z) ** 2;
+          if (d2 < dmin) dmin = d2;
+        }
+      }
+      if (dmin < R2) c++;
+      minD = Math.min(minD, Math.sqrt(dmin));
+      mh = Math.max(mh, Math.abs(h));
+    }
+    return { c, minD, end: { k, h, x, z }, mh };
+  }
+  // Planificación: genera muchos patrones posibles, descarta los que chocan con la pista y puntúa los demás
+  // por su separación y por el espacio libre que dejan delante (180 m de recta de comprobación).
+  function buildPattern() {
+    const start = { k: gk, h: gh, x: gx, z: gz };
+    const cands = [];
+    for (let t = 0; t < 40; t++) { const cand = []; genPattern(cand); cands.push(cand); }
+    for (const sg of [-1, 1]) { cands.push([{ k: sg / 10, n: 4 }]); cands.push([{ k: sg / 10, n: 2 }]); }
+    cands.push([{ k: 0, n: 30 }]);
+    let best = null, bestScore = -Infinity;
+    for (const cand of cands) {
+      const r = simulate(cand, start);
+      let score;
+      if (r.mh > 1.2) continue;   // el rumbo se sale del cono de avance
+      if (r.c > 0) score = -1000 * r.c;
+      else {
+        const la = simulate([{ k: 0, n: 60 }], r.end);
+        score = (la.c === 0 && la.mh <= 1.2 ? 500 : 0) + Math.min(la.minD, 150) + Math.min(r.minD, 60) + Math.random() * 5;
+      }
+      if (score > bestScore) { bestScore = score; best = cand; }
+    }
+    if (!best) best = [{ k: 0, n: 30 }];
+    for (const sg of best) segQueue.push(sg);
   }
   function extend(n) {
     while (pts.length < n) {
@@ -705,15 +893,16 @@ function init(M) {
       gTimer--;
       gk += (gT - gk) * 0.35;
       gh += gk * STEP;
+      // Rasante: suaves ondulaciones en cualquier tramo, y crestas bruscas (que hacen saltar el coche) solo en rectas
       gslope = clamp(gslope * 0.97 + (Math.random() - 0.5) * (Math.abs(gk) < 0.002 ? 0.03 : 0.006), -0.18, 0.18);
-      if (Math.abs(gk) < 0.002 && Math.random() < 0.01) gslope = clamp(gslope + (Math.random() < 0.5 ? -1 : 1) * 0.12, -0.2, 0.2);
-      gy += gslope * STEP;
+      if (Math.abs(gk) < 0.002 && Math.random() < 0.01) gslope = clamp(gslope + (Math.random() < 0.5 ? -1 : 1) * 0.16, -0.2, 0.2);
       gx += Math.sin(gh) * STEP;
       gz += Math.cos(gh) * STEP;
+      ensureAround(gx, gz);
+      gy = roadY(gx, gz, gh);
       const b = bridgeHeight(m);
       const p = { x: gx, y: gy + b, z: gz, h: gh, b, k: gk };
       pts.push(p);
-      checkCross(m);
       const key = Math.floor(p.x / 16) + ',' + Math.floor(p.z / 16);
       if (!grid.has(key)) grid.set(key, []);
       grid.get(key).push(m);
@@ -742,14 +931,10 @@ function init(M) {
     const g = new THREE.Group();
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
 
-    // La hierba no existe bajo la carretera: solo se dibuja fuera del arcén
-    const gm = pick(TM[t].grass);
-    add(groundMesh(list, LAT.filter(x => x < -5.5)), gm);
-    add(groundMesh(list, LAT.filter(x => x > 5.5)), gm);
-    add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), pick(TM[t].road));
-    // Arcén de asfalto que continúa más allá de las barreras, a nivel del terreno
-    const yf = a => i => groundY(list[i], a) - list[i].y + 0.1;
-    for (const sg of [-1, 1]) add(ribbon(list, sg * ROAD_W / 2, yf(sg * ROAD_W / 2), sg * (ROAD_W / 2 + 4.4), yf(sg * ROAD_W / 2)), pick(TM[t].road));
+    const avgY = list.reduce((acc, p) => acc + p.y, 0) / list.length, rt = avgY > 52 ? 2 : t;
+    add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), pick(TM[rt].road));
+    // Suelo de 2 m más allá de las barreras (las barreras no se mueven: el suelo empieza en su base)
+    for (const sg of [-1, 1]) add(ribbon(list, sg * ROAD_W / 2, 0, sg * (ROAD_W / 2 + 2.4), 0), pick(TM[rt].road));
     if (t === 0) add(dashes(list), MAT.line);
     // Marcas de neumáticos por tramos, en los dos carriles
     for (const lane of [-ROAD_W * 0.25, ROAD_W * 0.25]) if (Math.random() < 0.5)
@@ -772,71 +957,10 @@ function init(M) {
       const p = list[i];
       if (p.b > 1) for (const side of [-4, 4]) {
         const q = ptAt(p, side), m = new THREE.Mesh(PILLAR, MAT.pillar);
-        const dep = 3.5 * (p.b / BRIDGE_H), bottom = p.y - p.b - 0.6 - dep, top = p.y - 0.4;
+        const bottom = groundY(p, side), top = p.y - 0.4;
         m.scale.set(1, top - bottom, 1);
         m.position.set(q.x, (top + bottom) / 2, q.z);
         m.userData.own = false; g.add(m);
-      }
-    }
-    // Árboles y casas detrás de las barreras: cuadrícula densa, ~90 % ocupada
-    for (let i = 0; i < CH; i += 2) {
-      const p = list[i];
-      for (let col = 0; col < 5; col++) for (const side of [-1, 1]) {
-        if (Math.random() > 0.9) continue;
-        if (zone === 'pueblo' && col < 2 && Math.random() < 0.35) {
-          const ah = side * (BAR + 7 + col * 6), qh = ptAt(p, ah);
-          if (latEff(p, ah) !== ah) continue;
-          addHouse(g, qh.x, groundY(p, ah), qh.z, p.h, c, t === 2);
-          continue;
-        }
-        {
-          const a = side * (BAR + 3 + col * 6 + rnd(-1, 1)), q = ptAt(p, a), y = groundY(p, a);
-          if (latEff(p, a) !== a) continue;
-          if (TREE_LP) {
-            const t = new THREE.Mesh(pick(snowC ? LP_SNOW : LP), LP_MAT);
-            t.scale.setScalar(rnd(1.0, 1.5));
-            t.rotation.y = rnd(0, 6.28);
-            t.position.set(q.x, y, q.z); t.userData.own = false; g.add(t);
-            continue;
-          }
-          const mat = pick(TREE_MATS), w = rnd(6, 11) * (mat.userData.size || 1), s = new THREE.Mesh(TREE_PLANE, mat);
-          s.scale.set(w, w * mat.userData.aspect, 1);
-          s.userData.bb = true;
-          s.position.set(q.x, y, q.z);
-          s.userData.own = false; g.add(s);
-          const cs = new THREE.Mesh(CANOPY_G, SHADOW_MAT);
-          cs.scale.set(w * 0.5, w * mat.userData.aspect, w * 0.5);
-          cs.position.set(q.x, y, q.z); cs.userData.own = false; g.add(cs);
-        }
-      }
-    }
-    if (Math.random() < 0.12) {
-      const oi = Math.floor(rnd(2, CH - 2));
-      addObstacle(g, list[oi], pick([-1, 1]) * ROAD_W / 4, c, c * CH + oi);
-    }
-    // Multitudes en el arcén: grupos de 20-30 (y más pequeños) y personas sueltas.
-    // Cada variante se dibuja como una malla instanciada, para que muchas personas cuesten poco.
-    {
-      const crowd = new Map();
-      const place = (p, a) => {
-        if (latEff(p, a) !== a) return;
-        const q = ptAt(p, a), v = Math.floor(Math.random() * PPL.length);
-        if (!crowd.has(v)) crowd.set(v, []);
-        crowd.get(v).push({ x: q.x, y: groundY(p, a), z: q.z, ry: Math.random() * 6.28 });
-      };
-      const groups = Math.floor(rnd(0, 3)) + (Math.random() < 0.6 ? 1 : 0);
-      for (let k = 0; k < groups; k++) {
-        const n = Math.random() < 0.6 ? Math.floor(rnd(20, 31)) : Math.floor(rnd(6, 14));
-        const i0 = Math.floor(rnd(0, CH - 3)), side = pick([-1, 1]), base = BAR + rnd(2.0, 4.0), depth = rnd(1.5, 3.5);
-        for (let j = 0; j < n; j++) place(list[i0 + Math.floor(rnd(0, 3))], side * (base + rnd(0, depth)));
-      }
-      for (let j = 0; j < Math.floor(rnd(2, 6)); j++) place(list[Math.floor(rnd(0, CH))], pick([-1, 1]) * (BAR + rnd(2.5, 6)));
-      const dm = new THREE.Object3D();
-      for (const [v, arr] of crowd) {
-        const im = new THREE.InstancedMesh(PPL[v], PPL_MAT, arr.length);
-        arr.forEach((e, j) => { dm.position.set(e.x, e.y, e.z); dm.rotation.set(0, e.ry, 0); dm.updateMatrix(); im.setMatrixAt(j, dm.matrix); });
-        im.instanceMatrix.needsUpdate = true;
-        im.userData.own = false; g.add(im);
       }
     }
     g.traverse(m => { if (m.isMesh) { m.castShadow = !m.userData.bb; m.receiveShadow = true; } });
@@ -847,6 +971,7 @@ function init(M) {
     g.traverse(m => { if (m.isMesh && m.userData.own) m.geometry.dispose(); });
   }
   function updateTrack(p) {
+    cullTiles(p);
     const c0 = Math.floor(p / CH);
     extend(Math.floor(p) + CH * 25);
     for (let c = c0; c <= c0 + 3; c++) {
@@ -1009,7 +1134,13 @@ function init(M) {
   }
   document.querySelectorAll('.sensInput').forEach(i => i.addEventListener('input', () => setSens(+i.value)));
 
+  let topView = false, godMode = false;
+  const carBox = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshBasicMaterial({ color: 0xff3030 }));
+  carBox.visible = false; scene.add(carBox);
+  const fogObj = scene.fog;
   addEventListener('keydown', e => {
+    if (DEBUG && e.code === 'KeyV') topView = !topView;
+    if (DEBUG && e.code === 'KeyG') godMode = !godMode;
     if (KEYS.includes(e.code)) e.preventDefault();
     keys[e.code] = true;
     if (e.code === 'Enter' && S.state === 'menu') start();
@@ -1307,7 +1438,7 @@ function init(M) {
   function setNight(on) {
     document.body.classList.toggle('night', on);
     scene.background.set(on ? 0x0b1222 : SKY);
-    scene.fog.color.set(on ? 0x0b1222 : SKY);
+    if (fogObj) fogObj.color.set(on ? 0x0b1222 : SKY);
     hemi.intensity = on ? 0.5 * 0.05 : 0.5;
     sun.intensity = on ? 0 : 1.5;
     headL.intensity = on ? 12 : 0;
@@ -1393,7 +1524,7 @@ function init(M) {
     if (!document.body.classList.contains('night')) {
       envTo.set(ENVC[terrAt(S.p).name]);
       envCol.lerp(envTo, 1 - Math.exp(-dt * 1.5));
-      scene.background.copy(envCol); scene.fog.color.copy(envCol);
+      scene.background.copy(envCol); if (fogObj) fogObj.color.copy(envCol);
     }
     if (DEBUG && S.state !== 'menu') {
       const c0 = sample(S.p), pp = pts[Math.min(Math.floor(S.p), pts.length - 1)];
@@ -1405,6 +1536,20 @@ function init(M) {
     }
     sun.position.set(S.cam.x - 80, S.cam.y + 120, S.cam.z + 60);
     sun.target.position.set(S.cam.x, S.cam.y - 1.4, S.cam.z);
+    if (godMode && DEBUG) S.hp = 100;
+    if (topView && DEBUG) {
+      scene.fog = null;
+      cam.up.set(Math.sin(yaw), 0, Math.cos(yaw));
+      cam.position.set(ex, 100, ez);
+      cam.lookAt(ex, 0, ez);
+      carBox.visible = true;
+      carBox.position.set(ex, c.y + 0.5, ez);
+      carBox.rotation.set(0, yaw, 0);
+    } else {
+      scene.fog = fogObj;
+      cam.up.set(0, 1, 0);
+      carBox.visible = false;
+    }
     if (S.state !== 'menu') renderer.render(scene, cam);
     requestAnimationFrame(frame);
   }
