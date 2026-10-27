@@ -29,7 +29,6 @@
       "assets/textures/hay02.png"
     ],
     "concrete": [
-      "assets/textures/concrete.png"
     ],
     "plaster": [
     ],
@@ -62,14 +61,8 @@
   },
   "menuImage": "assets/menu.png",
   "sounds": {
-    "crash": "assets/sounds/crash.wav",
-    "engine": "assets/sounds/engine.wav",
-    "shift": "assets/sounds/shift.wav",
+    "engine": "assets/sounds/engine.mp3",
     "terrain": {
-      "Asfalto": "assets/sounds/road_asphalt.wav",
-      "Grava": "assets/sounds/road_gravel.wav",
-      "Nieve": "assets/sounds/road_snow.wav",
-      "Barro": "assets/sounds/road_mud.wav"
     }
   },
   "repeat": {
@@ -91,5 +84,8 @@
     "cone": 0.4
   },
   "arrows": {
+    "left": "assets/ui/left.svg",
+    "right": "assets/ui/right.svg",
+    "obstacle": "assets/ui/warning.svg"
   }
 }

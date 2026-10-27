@@ -38,6 +38,12 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"VideoGame","name":"Endless Stage","description":"Juego de rally 3D en el navegador con pista infinita generada de forma procedural.","genre":["Racing","Simulation"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","inLanguage":"es","url":"https://endless-stage.netlify.app/","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"}}
 </script>
+<style>
+.hitFx{position:fixed;top:0;bottom:0;width:38%;pointer-events:none;opacity:0;transition:opacity 1s ease-out;z-index:4}
+.hitFx.on{opacity:1;transition:none}
+#hitL{left:0;background:linear-gradient(90deg,rgba(255,40,40,.6),rgba(255,40,40,0))}
+#hitR{right:0;background:linear-gradient(270deg,rgba(255,40,40,.6),rgba(255,40,40,0))}
+</style>
 </head>
 <body>
 <noscript>Endless Stage necesita JavaScript para ejecutarse.</noscript>
@@ -53,7 +59,7 @@
     <div class="lbl">Récord <span id="bestHud">0.00</span> km</div>
     <div class="bar"><i id="hpBar"></i></div>
     <div id="toast" class="hidden"></div>
-<pre id="dbg" class="hidden" style="position:fixed;left:0;bottom:0;z-index:20;margin:0;padding:6px;font:12px monospace;color:#7dff9b;background:rgba(0,0,0,.6);pointer-events:none"></pre>
+
   </div>
   <div class="hudCenter">
     <div id="turns" class="glass"><div id="t1" class="turnMain"><span class="ico"></span><small class="dtxt">—</small></div><div id="t2" class="turnSub"><span class="ico"></span><small class="dtxt">—</small></div></div>
@@ -61,6 +67,9 @@
   <div class="hudRight"><button id="pauseBtn" class="glass" aria-label="Menú">☰</button></div>
 </div>
 <div id="flash"></div>
+<div id="hitL" class="hitFx"></div>
+<div id="hitR" class="hitFx"></div>
+<pre id="dbg" class="hidden" style="position:fixed;left:0;bottom:0;z-index:20;margin:0;padding:6px;font:12px monospace;color:#7dff9b;background:rgba(0,0,0,.6);pointer-events:none"></pre>
 
 <div id="touch" class="hidden" data-m="touch">
   <div class="zone" data-c="L" aria-label="Izquierda"><svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path d="M15 5 L8 12 L15 19" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
