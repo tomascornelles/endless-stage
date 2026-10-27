@@ -473,7 +473,7 @@ function init(M) {
     for (let i = 0; i < NT; i++) for (let k = 0; k < NT; k++) {
       const a = i * N1 + k, b = (i + 1) * N1 + k, c = (i + 1) * N1 + k + 1, d = i * N1 + k + 1;
       const avg = (H[a] + H[b] + H[c] + H[d]) / 4;
-      (avg > 52 ? sI : gI).push(a, d, b, b, d, c);   // por encima de 52 m: nieve
+      (avg > 60 ? sI : gI).push(a, d, b, b, d, c);   // por encima de 60 m: nieve
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -1077,6 +1077,38 @@ function init(M) {
   let grid = new Map(), bridges = [];
   const widthMap = new Map();
   let LAMPS = [];
+  // Salida: cuenta atrás con semáforo (3 rojas, ámbar, verde). Se puede acelerar, pero el coche no sale hasta el verde.
+  const race = { wait: false, t: 0, step: -1, lamps: [] };
+  const LAMP_OFF = new THREE.MeshBasicMaterial({ color: 0x2a2a2a });
+  const LAMP_ON = [0xff2a2a, 0xff2a2a, 0xff2a2a, 0xffd60a, 0x3dff6a].map(hx => new THREE.MeshBasicMaterial({ color: hx }));
+  const START_TEX = canvasTex(256, 64, (x, w, h) => {
+    x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h);
+    x.fillStyle = '#111111';
+    for (let i = 0; i < w; i += 16) for (let j = 0; j < h; j += 16) if (((i + j) / 16) % 2 === 0) x.fillRect(i, j, 16, 16);
+    x.fillStyle = 'rgba(255,42,42,0.85)'; x.fillRect(w * 0.2, h * 0.2, w * 0.6, h * 0.6);
+    x.fillStyle = '#ffffff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText('SALIDA', w / 2, h / 2);
+  });
+  function beep(f, d) {
+    const ac = audio(); if (!ac) return;
+    const o = ac.createOscillator(), gn = ac.createGain();
+    o.type = 'square'; o.frequency.value = f;
+    gn.gain.setValueAtTime(0.15, ac.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + d);
+    o.connect(gn); gn.connect(ac.destination);
+    o.start(); o.stop(ac.currentTime + d);
+  }
+  function setLamps(k) { race.lamps.forEach((l, i) => { l.mesh.material = i <= k ? LAMP_ON[i] : LAMP_OFF; }); }
+  function startCountdown() { race.wait = true; race.t = 0; race.step = -1; setLamps(-1); }
+  function updateRace(dt) {
+    if (!race.wait) return;
+    race.t += dt;
+    const k = Math.min(4, Math.floor(race.t));
+    if (k !== race.step) {
+      race.step = k; setLamps(k);
+      if (k < 4) beep(440, 0.15); else { beep(880, 0.6); race.wait = false; }
+    }
+  }
   const pinchMap = new Map();
   const tiles = new Map();
   const mountains = [];
@@ -1102,7 +1134,7 @@ function init(M) {
     }
   }
   // Ancho: 20 m al inicio, -0,5 m por cada km, mínimo 4 m
-  const roadWidthAt = d => Math.max(4, 20 - 0.5 * d / 1000);
+  const roadWidthAt = d => Math.max(4, 18 - d / 1000 + 2 * Math.sin(d / 170));
   scene.add(world);
   let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0, segQueue = [];
 
@@ -1251,9 +1283,9 @@ function init(M) {
     if (zone === 'bosque') wallPool.push('forest', 'forest');
     const wall = onBridge ? pick(['rail', 'wave', 'stone'])
       : start ? 'houses' : (Math.random() < 0.2 ? 'tyre' : pick(wallPool));
-    const highC = list.reduce((acc, p) => acc + p.y, 0) / list.length > 52;
+    const highC = list.reduce((acc, p) => acc + p.y, 0) / list.length > 60;
     terrMap.set(c, highC ? 2 : (t === 2 ? 0 : t)); zoneMap.set(c, zone);
-    const snowC = list.reduce((acc, p) => acc + p.y, 0) / list.length > 52;   // nieve solo en cotas altas
+    const snowC = list.reduce((acc, p) => acc + p.y, 0) / list.length > 60;   // nieve solo en cotas altas
     const g = new THREE.Group();
     const add = (geo, m, own = true) => { const mesh = new THREE.Mesh(geo, m); mesh.userData.own = own; g.add(mesh); };
 
@@ -1346,6 +1378,31 @@ function init(M) {
       if (zone === 'pueblo' && Math.random() < 0.5) {
         const p = list[Math.floor(rnd(0, list.length - 1))], a = pick([-1, 1]) * (BAR + 12 + rnd(0, 10)), q = ptAt(p, a);
         if (nearestTrack(q.x, q.z).d > 15) addHouse(g, q.x, groundY(p, a), q.z, p.h, c, snowC);
+      }
+    }
+    if (c === 0) {
+      // Pancarta de salida sobre la pista y semáforo en el lateral derecho
+      race.lamps = [];
+      const p0 = list[0];
+      const beam = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ map: START_TEX }));
+      beam.scale.set(ROAD_W + 1.6, 0.6, 0.35);
+      const bq = offPt(p0, 0, 0); beam.position.set(bq.x, p0.y + 6.2, bq.z); beam.rotation.y = p0.h;
+      beam.userData.own = false; g.add(beam);
+      for (const sg of [-1, 1]) {
+        const pq = offPt(p0, sg * (ROAD_W / 2 + 0.8), 0), post = new THREE.Mesh(BOX, POLE_MAT);
+        post.scale.set(0.5, 6.8, 0.5); post.position.set(pq.x, p0.y, pq.z); post.userData.own = false; g.add(post);
+      }
+      const sl = BAR + 1.6, sq = offPt(p0, sl, 0);
+      const housing = new THREE.Mesh(BOX, POLE_MAT);
+      housing.scale.set(3.4, 1.0, 0.6); housing.position.set(sq.x, p0.y + 3.4, sq.z); housing.rotation.y = p0.h;
+      housing.userData.own = false; g.add(housing);
+      const pole = new THREE.Mesh(BOX, POLE_MAT);
+      pole.scale.set(0.3, 3.4, 0.3); pole.position.set(sq.x, p0.y, sq.z); pole.userData.own = false; g.add(pole);
+      for (let k = 0; k < 5; k++) {
+        const lq = offPt(p0, sl + (k - 2) * 0.62, 0), m = new THREE.Mesh(BOX, LAMP_OFF);
+        m.scale.set(0.42, 0.42, 0.3); m.position.set(lq.x, p0.y + 3.4, lq.z); m.rotation.y = p0.h;
+        m.userData.own = false; g.add(m);
+        race.lamps.push({ mesh: m, on: LAMP_ON[k] });
       }
     }
     decorLandscape(list, c, g, BAR, zone, snowC, houseCols.some(h => h.c === c));
@@ -1604,6 +1661,7 @@ function init(M) {
   function start() {
     $('restartMenu').classList.remove('hidden');
     audio();
+    startCountdown();
     if (S.mode === 'gyro') {
       requestGyro();
       gyro.base = null; gyro.steer = 0;
@@ -1876,7 +1934,9 @@ function init(M) {
       S.demoT += dt;
       physics(dt, { steer: Math.sin(S.demoT * 0.6) * 0.35, gas: 1, brake: 0 });
     } else if (S.state === 'playing') {
+      updateRace(dt);
       physics(dt, readInput());
+      if (race.wait) { S.speed = 0; S.p = 0; S.dist = 0; }
     } else if (S.state === 'over') {
       physics(dt, { steer: 0, gas: 0, brake: 1 });
     }
