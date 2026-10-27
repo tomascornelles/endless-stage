@@ -43,6 +43,13 @@
 .hitFx.on{opacity:1;transition:none}
 #hitL{left:0;background:linear-gradient(90deg,rgba(255,40,40,.6),rgba(255,40,40,0))}
 #hitR{right:0;background:linear-gradient(270deg,rgba(255,40,40,.6),rgba(255,40,40,0))}
+@media (pointer: coarse) {
+  /* En móvil el desenfoque de cada elemento cuesta mucho en GPU: se sustituye por un fondo más opaco */
+  #touch .zone, #turns, .lcd, #pauseBtn, .glass {
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    background: rgba(12, 18, 34, 0.72) !important;
+  }
+}
 </style>
 </head>
 <body>

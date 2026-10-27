@@ -368,7 +368,7 @@ function init(M) {
 
   // ---------- Three.js ----------
   const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true, logarithmicDepthBuffer: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, matchMedia('(pointer: coarse)').matches ? 1 : 1.25));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -376,7 +376,7 @@ function init(M) {
   const SKY = 0x8fd3ff;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(SKY);
-  scene.fog = new THREE.Fog(SKY, 200, 900);
+  scene.fog = new THREE.Fog(SKY, 150, 600);
   const cam = new THREE.PerspectiveCamera(68, 1, 0.3, 900);
   // Faros: foco unido a la cámara que solo se enciende de noche
   const headL = new THREE.SpotLight(0xffe2b8, 0, 85, 0.75, 0.2, 1);
@@ -392,7 +392,7 @@ function init(M) {
   cam.add(headP);
   scene.add(cam);
   // Farolas: 4 luces que se colocan en las farolas más cercanas al coche, solo de noche
-  const lampLights = [0, 1, 2, 3].map(() => { const L = new THREE.PointLight(0xffd9a0, 0, 30, 1.5); scene.add(L); return L; });
+  const lampLights = [0, 1].map(() => { const L = new THREE.PointLight(0xffd9a0, 0, 30, 1.5); scene.add(L); return L; });
   let lampTick = 0;
   function updateLampLights() {
     if (!document.body.classList.contains('night')) {
@@ -414,7 +414,7 @@ function init(M) {
   // Sombras del sol: la zona de sombra sigue al coche (unos 140 m)
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 });
+  Object.assign(sun.shadow.camera, { left: -45, right: 45, top: 45, bottom: -45, near: 1, far: 260 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.02;
@@ -499,7 +499,7 @@ function init(M) {
     if (!cp) return;
     for (const [k, t] of tiles) {
       const dx = (t.tx + 0.5) * TILE - cp.x, dz = (t.tz + 0.5) * TILE - cp.z;
-      if (Math.hypot(dx, dz) > 1600) { world.remove(t.mesh); t.mesh.geometry.dispose(); tiles.delete(k); clearMountains(0, 0, k); }
+      if (Math.hypot(dx, dz) > 1100) { world.remove(t.mesh); t.mesh.geometry.dispose(); tiles.delete(k); clearMountains(0, 0, k); }
     }
   }
   function terrainAt(x, z) {
@@ -853,7 +853,7 @@ function init(M) {
   // Fila de casas cuya cara próxima hace de barrera; huecos de 1 m como máximo
   function barrierHouses(list, sgn, g, BAR, ctx) {
     const maxS = (list.length - 1) * STEP;
-    let s = rnd(0, 3);
+    let s = ctx.c === 0 ? rnd(14, 16) : rnd(0, 3);   // en el inicio, las casas empiezan a 14 m
     while (s < maxS - 4) {
       const p = list[Math.min(list.length - 1, Math.floor(s / STEP))];
       const h = house(0, 0, 0, p.h, ctx.snowC);
@@ -1066,6 +1066,7 @@ function init(M) {
         inst.userData.own = false; g.add(inst);
       });
     } else if (type === 'houses') {
+      if (ctx.c === 0) add(ribbon(list, a, 0, a, 0.8), pick(MAT.rail));   // barrera tras la salida
       barrierHouses(list, sgn, g, BAR, ctx);
     } else if (type === 'forest') {
       barrierForest(list, sgn, BAR, ctx);
@@ -1079,15 +1080,13 @@ function init(M) {
   let LAMPS = [];
   // Salida: cuenta atrás con semáforo (3 rojas, ámbar, verde). Se puede acelerar, pero el coche no sale hasta el verde.
   const race = { wait: false, t: 0, step: -1, lamps: [] };
+  const LAMP_G = new THREE.CylinderGeometry(0.22, 0.22, 0.12, 18); LAMP_G.rotateX(Math.PI / 2);
   const LAMP_OFF = new THREE.MeshBasicMaterial({ color: 0x2a2a2a });
   const LAMP_ON = [0xff2a2a, 0xff2a2a, 0xff2a2a, 0xffd60a, 0x3dff6a].map(hx => new THREE.MeshBasicMaterial({ color: hx }));
   const START_TEX = canvasTex(256, 64, (x, w, h) => {
     x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h);
     x.fillStyle = '#111111';
     for (let i = 0; i < w; i += 16) for (let j = 0; j < h; j += 16) if (((i + j) / 16) % 2 === 0) x.fillRect(i, j, 16, 16);
-    x.fillStyle = 'rgba(255,42,42,0.85)'; x.fillRect(w * 0.2, h * 0.2, w * 0.6, h * 0.6);
-    x.fillStyle = '#ffffff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.fillText('SALIDA', w / 2, h / 2);
   });
   function beep(f, d) {
     const ac = audio(); if (!ac) return;
@@ -1383,7 +1382,7 @@ function init(M) {
     if (c === 0) {
       // Pancarta de salida sobre la pista y semáforo en el lateral derecho
       race.lamps = [];
-      const p0 = list[0];
+      const p0 = list[3];   // 9 m por delante del coche
       const beam = new THREE.Mesh(BOX, new THREE.MeshLambertMaterial({ map: START_TEX }));
       beam.scale.set(ROAD_W + 1.6, 0.6, 0.35);
       const bq = offPt(p0, 0, 0); beam.position.set(bq.x, p0.y + 6.2, bq.z); beam.rotation.y = p0.h;
@@ -1392,15 +1391,14 @@ function init(M) {
         const pq = offPt(p0, sg * (ROAD_W / 2 + 0.8), 0), post = new THREE.Mesh(BOX, POLE_MAT);
         post.scale.set(0.5, 6.8, 0.5); post.position.set(pq.x, p0.y, pq.z); post.userData.own = false; g.add(post);
       }
-      const sl = BAR + 1.6, sq = offPt(p0, sl, 0);
+      // Semáforo colgado del arco, en el lado derecho; las luces redondas miran hacia el coche (hacia atrás)
+      const sl = ROAD_W / 2 - 1.6, sq = offPt(p0, sl, 0);
       const housing = new THREE.Mesh(BOX, POLE_MAT);
-      housing.scale.set(3.4, 1.0, 0.6); housing.position.set(sq.x, p0.y + 3.4, sq.z); housing.rotation.y = p0.h;
+      housing.scale.set(3.0, 0.95, 0.5); housing.position.set(sq.x, p0.y + 5.3, sq.z); housing.rotation.y = p0.h;
       housing.userData.own = false; g.add(housing);
-      const pole = new THREE.Mesh(BOX, POLE_MAT);
-      pole.scale.set(0.3, 3.4, 0.3); pole.position.set(sq.x, p0.y, sq.z); pole.userData.own = false; g.add(pole);
       for (let k = 0; k < 5; k++) {
-        const lq = offPt(p0, sl + (k - 2) * 0.62, 0), m = new THREE.Mesh(BOX, LAMP_OFF);
-        m.scale.set(0.42, 0.42, 0.3); m.position.set(lq.x, p0.y + 3.4, lq.z); m.rotation.y = p0.h;
+        const lq = offPt(p0, sl + (k - 2) * 0.6, -0.3), m = new THREE.Mesh(LAMP_G, LAMP_OFF);
+        m.position.set(lq.x, p0.y + 5.3, lq.z); m.rotation.y = p0.h;
         m.userData.own = false; g.add(m);
         race.lamps.push({ mesh: m, on: LAMP_ON[k] });
       }
