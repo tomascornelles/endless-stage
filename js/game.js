@@ -222,10 +222,10 @@ function init(M) {
   const SHADE_MAT = new THREE.MeshBasicMaterial({
     map: canvasTex(64, 4, (x, w, h) => {
       const gr = x.createLinearGradient(0, 0, w, 0);
-      gr.addColorStop(0, '#ffffff'); gr.addColorStop(0.5, '#6e6e74'); gr.addColorStop(1, '#ffffff');
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, 'rgba(0,0,0,0.15)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
       x.fillStyle = gr; x.fillRect(0, 0, w, h);
     }),
-    transparent: true, premultipliedAlpha: true, blending: THREE.MultiplyBlending, depthWrite: false, side: DS,
+    transparent: true, depthWrite: false, side: DS,
     polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3
   });
   // Banda degradada de anchura 2·half centrada en el desplazamiento `c`, con el degradado mapeado de borde a borde
@@ -379,14 +379,30 @@ function init(M) {
   scene.fog = new THREE.Fog(SKY, 200, 900);
   const cam = new THREE.PerspectiveCamera(68, 1, 0.3, 900);
   // Faros: foco unido a la cámara que solo se enciende de noche
-  const headL = new THREE.SpotLight(0xfff3d6, 0, 90, 0.55, 0.45, 1);
+  const headL = new THREE.SpotLight(0xfff3d6, 0, 70, 0.42, 0.45, 1);
   headL.position.set(0, 0, 0);
-  headL.target.position.set(0, -0.3, -30);
+  headL.target.position.set(0, -1.6, -14);
   cam.add(headL); cam.add(headL.target);
   const headP = new THREE.PointLight(0xfff3d6, 0, 14, 1.5);
   headP.position.set(0, -0.8, 0.5);
   cam.add(headP);
   scene.add(cam);
+  // Farolas: 4 luces que se colocan en las farolas más cercanas al coche, solo de noche
+  const lampLights = [0, 1, 2, 3].map(() => { const L = new THREE.PointLight(0xffd9a0, 0, 30, 1.5); scene.add(L); return L; });
+  let lampTick = 0;
+  function updateLampLights() {
+    if (!document.body.classList.contains('night')) {
+      if (lampLights[0].intensity) lampLights.forEach(L => { L.intensity = 0; });
+      return;
+    }
+    if (++lampTick % 10) return;
+    const c = sample(S.p);
+    const best = LAMPS.map(l => ({ l, d: (l.x - c.x) ** 2 + (l.z - c.z) ** 2 })).sort((a, b) => a.d - b.d).slice(0, lampLights.length);
+    lampLights.forEach((L, i) => {
+      const b = best[i];
+      if (b && b.d < 900) { L.position.set(b.l.x, b.l.y, b.l.z); L.intensity = 3; } else L.intensity = 0;
+    });
+  }
   const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x4a5a3a, 0.5);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1d6, 1.5);
@@ -884,7 +900,7 @@ function init(M) {
   }
   const WHITE = new THREE.Color(1, 1, 1), CROP_A = new THREE.Color(0x6fa33a), CROP_B = new THREE.Color(0x8cbf4a), FURROW = new THREE.Color(0x6b4a2b);
   // Paisaje de un tramo: vallas, cultivos, silos, agua, carteles, farolas y tendido eléctrico
-  function decorLandscape(list, c, g, BAR, zone, snowC) {
+  function decorLandscape(list, c, g, BAR, zone, snowC, hasHouses) {
     const last = list.length - 1;
     for (const sgn of [-1, 1]) {
       if (zone === 'campo' && !snowC && Math.random() < 0.5) {
@@ -935,7 +951,7 @@ function init(M) {
     }
     // Farolas a ambos lados (cada 30 m, cada 15 m en pueblo)
     const step = zone === 'pueblo' ? 5 : 10;
-    for (let i = 0; i <= last; i += step) for (const sgn of [-1, 1]) {
+    if (hasHouses) for (let i = 0; i <= last; i += step) for (const sgn of [-1, 1]) {
       if (Math.random() < 0.15) continue;
       const p = list[i], L = sgn * (BAR + 1.3), gy = groundY(p, L), q = offPt(p, L, 0);
       const pole = new THREE.Mesh(BOX, POLE_MAT);
@@ -943,6 +959,7 @@ function init(M) {
       const arm = new THREE.Mesh(BOX, POLE_MAT), aq = offPt(p, L - sgn * 1.0, 0);
       arm.scale.set(2.0, 0.14, 0.14); arm.position.set(aq.x, gy + 6.9, aq.z); arm.rotation.y = p.h;
       arm.userData.own = false; g.add(arm);
+      LAMPS.push({ c, x: aq.x, y: gy + 6.6, z: aq.z });
     }
     // Tendido eléctrico a 6 m del arcén: torres al inicio del tramo y tres cables
     if (Math.random() < 0.5) {
@@ -1055,6 +1072,7 @@ function init(M) {
   let pts = [], world = new THREE.Group(), chunks = new Map(), terrMap = new Map(), zoneMap = new Map();
   let grid = new Map(), bridges = [];
   const widthMap = new Map();
+  let LAMPS = [];
   const pinchMap = new Map();
   const tiles = new Map();
   const mountains = [];
@@ -1085,7 +1103,7 @@ function init(M) {
 
   function resetTrack() {
     chunks.forEach(g => { world.remove(g); disposeChunk(g); });
-    chunks.clear(); terrMap.clear(); zoneMap.clear(); grid = new Map(); bridges = []; houseCols = []; obsCols = []; widthMap.clear(); pinchMap.clear();
+    chunks.clear(); terrMap.clear(); zoneMap.clear(); grid = new Map(); bridges = []; houseCols = []; obsCols = []; widthMap.clear(); pinchMap.clear(); LAMPS = [];
     pts = []; gk = 0; gh = 0; gslope = 0; gx = 0; gz = 0; gT = 0; gTimer = 0; segQueue = [];
     ensureAround(0, 0);
     gy = roadY(0, 0, 0);
@@ -1236,8 +1254,8 @@ function init(M) {
 
     const avgY = list.reduce((acc, p) => acc + p.y, 0) / list.length, rt = snowC ? 2 : (t === 2 ? 0 : t);
     add(ribbon(list, -ROAD_W / 2, 0, ROAD_W / 2, 0), pick(TM[rt].road));
-    // Dos marcas de rodada: bandas degradadas de 1,8 m centradas a ±2,5 m del eje
-    for (const sg of [-1, 1]) add(gradStrip(list, sg * ROAD_W * 0.25, 0.9, 0.03), SHADE_MAT);
+    // Dos marcas de rodada de 0,5 m de ancho, a 2 m entre sí (±1 m del eje); opacidad 0 % – 15 % – 0 %
+    for (const sg of [-1, 1]) add(gradStrip(list, sg * 1.0, 0.25, 0.03), SHADE_MAT);
     // Suelo de 2 m más allá de las barreras (las barreras no se mueven: el suelo empieza en su base)
     for (const sg of [-1, 1]) add(ribbon(list, sg * ROAD_W / 2, 0, sg * (ROAD_W / 2 + 5), 0), pick(TM[rt].road));
     if (t === 0 && !snowC) add(dashes(list), MAT.line);
@@ -1328,7 +1346,7 @@ function init(M) {
         if (nearestTrack(q.x, q.z).d > 15) addHouse(g, q.x, groundY(p, a), q.z, p.h, c, snowC);
       }
     }
-    decorLandscape(list, c, g, BAR, zone, snowC);
+    decorLandscape(list, c, g, BAR, zone, snowC, houseCols.some(h => h.c === c));
     world.add(g);
     chunks.set(c, g);
   }
@@ -1343,7 +1361,7 @@ function init(M) {
       if (!chunks.has(c) && pts.length > (c + 1) * CH + 1) buildChunk(c);
     }
     for (const [c, g] of chunks) {
-      if (c < c0 - 2) { world.remove(g); disposeChunk(g); chunks.delete(c); houseCols = houseCols.filter(h => h.c !== c); obsCols = obsCols.filter(o => o.c !== c); }
+      if (c < c0 - 2) { world.remove(g); disposeChunk(g); chunks.delete(c); houseCols = houseCols.filter(h => h.c !== c); obsCols = obsCols.filter(o => o.c !== c); LAMPS = LAMPS.filter(l => l.c !== c); }
     }
   }
   function sample(p) {
@@ -1764,7 +1782,7 @@ function init(M) {
       const d = Math.max(0, (it.start - S.p) * STEP);
       return d < 1000 ? Math.round(d / 10) * 10 + 'm' : (d / 1000).toFixed(1) + 'km';
     };
-    const color = it => it.kind === 'obs' ? '#ff5a5a'
+    const color = it => it.kind === 'obs' ? '#ffd166'
       : Math.abs(it.ang) < 1.57 ? '#7dff9b' : Math.abs(it.ang) < 2.36 ? '#ffd166' : '#ff5a5a';
     const show = (el, it) => {
       const key = it.kind === 'obs' ? 'obstacle' : it.ang > 0 ? 'left' : 'right';
@@ -1816,7 +1834,7 @@ function init(M) {
     if (fogObj) fogObj.color.set(on ? 0x0b1222 : SKY);
     hemi.intensity = on ? 0.5 * 0.05 : 0.5;
     sun.intensity = on ? 0 : 1.5;
-    headL.intensity = on ? 12 : 0;
+    headL.intensity = on ? 18 : 0;
     headP.intensity = on ? 1.5 : 0;
     cloudMats.forEach(mt => mt.color.set(on ? 0x5a6a80 : 0xffffff));
     document.querySelectorAll('.nightSeg [data-night]').forEach(b => b.classList.toggle('on', (b.dataset.night === '1') === on));
@@ -1893,6 +1911,7 @@ function init(M) {
       $('hpBar').style.width = S.hp + '%';
       updateTurn();
     }
+    updateLampLights();
     if (!document.body.classList.contains('night')) {
       envTo.set(ENVC[terrAt(S.p).name]);
       envCol.lerp(envTo, 1 - Math.exp(-dt * 1.5));
