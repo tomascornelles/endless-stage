@@ -379,11 +379,15 @@ function init(M) {
   scene.fog = new THREE.Fog(SKY, 200, 900);
   const cam = new THREE.PerspectiveCamera(68, 1, 0.3, 900);
   // Faros: foco unido a la cámara que solo se enciende de noche
-  const headL = new THREE.SpotLight(0xfff3d6, 0, 70, 0.42, 0.45, 1);
+  const headL = new THREE.SpotLight(0xffe2b8, 0, 85, 0.75, 0.2, 1);
   headL.position.set(0, 0, 0);
-  headL.target.position.set(0, -1.6, -14);
+  headL.target.position.set(0, -1.6, -40);
+  // Sombras de los faros (solo de noche): el foco sigue a la cámara y proyecta las sombras de muros, casas y árboles
+  headL.shadow.mapSize.set(1024, 1024);
+  headL.shadow.camera.near = 0.5; headL.shadow.camera.far = 90;
+  headL.shadow.bias = -0.001; headL.shadow.normalBias = 0.05;
   cam.add(headL); cam.add(headL.target);
-  const headP = new THREE.PointLight(0xfff3d6, 0, 14, 1.5);
+  const headP = new THREE.PointLight(0xfff3d6, 0, 10, 1.5);
   headP.position.set(0, -0.8, 0.5);
   cam.add(headP);
   scene.add(cam);
@@ -400,7 +404,7 @@ function init(M) {
     const best = LAMPS.map(l => ({ l, d: (l.x - c.x) ** 2 + (l.z - c.z) ** 2 })).sort((a, b) => a.d - b.d).slice(0, lampLights.length);
     lampLights.forEach((L, i) => {
       const b = best[i];
-      if (b && b.d < 900) { L.position.set(b.l.x, b.l.y, b.l.z); L.intensity = 3; } else L.intensity = 0;
+      if (b && b.d < 900) { L.position.set(b.l.x, b.l.y, b.l.z); L.intensity = 1.8; } else L.intensity = 0;
     });
   }
   const hemi = new THREE.HemisphereLight(0xcfe8ff, 0x4a5a3a, 0.5);
@@ -1097,7 +1101,8 @@ function init(M) {
       }
     }
   }
-  const roadWidthAt = d => Math.max(2, 10 - 0.5 * d / 1000);
+  // Ancho: 20 m al inicio, -0,5 m por cada km, mínimo 4 m
+  const roadWidthAt = d => Math.max(4, 20 - 0.5 * d / 1000);
   scene.add(world);
   let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0, segQueue = [];
 
@@ -1258,10 +1263,6 @@ function init(M) {
     for (const sg of [-1, 1]) add(gradStrip(list, sg * 1.0, 0.25, 0.03), SHADE_MAT);
     // Suelo de 2 m más allá de las barreras (las barreras no se mueven: el suelo empieza en su base)
     for (const sg of [-1, 1]) add(ribbon(list, sg * ROAD_W / 2, 0, sg * (ROAD_W / 2 + 5), 0), pick(TM[rt].road));
-    if (t === 0 && !snowC) add(dashes(list), MAT.line);
-    // Marcas de neumáticos por tramos, en los dos carriles
-    for (const lane of [-ROAD_W * 0.25, ROAD_W * 0.25]) if (Math.random() < 0.5)
-      add(ribbon(list, lane - 0.6, 0.035, lane + 0.6, 0.035, i => ((i >> 3) & 1) === 0), snowC ? MAT.tireMarkSnow : pick(MAT.tireMark));
     // Baches y charcos
     for (let i = 0; i < CH; i += 2) if (!snowC && Math.random() < 0.08) {
       const q = ptAt(list[i], rnd(-3.2, 3.2)), m = new THREE.Mesh(CIRCLE, MAT.pothole);
@@ -1291,7 +1292,8 @@ function init(M) {
         m.userData.own = false; g.add(m);
       }
     }
-    g.traverse(m => { if (m.isMesh) { m.castShadow = !m.userData.bb; m.receiveShadow = true; } });
+    const ground = new Set([...TM.flatMap(t => [].concat(t.road)), SHADE_MAT]);
+    g.traverse(m => { if (m.isMesh) { m.castShadow = !m.userData.bb && !ground.has(m.material); m.receiveShadow = true; } });
     // Obstáculos ocasionales sobre la calzada, siempre a un cuarto de la pista
     if (Math.random() < 0.0625) {
       if (Math.random() < 0.5) {
@@ -1834,8 +1836,12 @@ function init(M) {
     if (fogObj) fogObj.color.set(on ? 0x0b1222 : SKY);
     hemi.intensity = on ? 0.5 * 0.05 : 0.5;
     sun.intensity = on ? 0 : 1.5;
-    headL.intensity = on ? 18 : 0;
-    headP.intensity = on ? 1.5 : 0;
+    sun.castShadow = !on;
+    headL.intensity = on ? 8.4 : 0;
+    renderer.toneMapping = on ? THREE.LinearToneMapping : THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = on ? 0.8 : 1.1;
+    headL.castShadow = on;
+    headP.intensity = on ? 0.9 : 0;
     cloudMats.forEach(mt => mt.color.set(on ? 0x5a6a80 : 0xffffff));
     document.querySelectorAll('.nightSeg [data-night]').forEach(b => b.classList.toggle('on', (b.dataset.night === '1') === on));
     try { localStorage.setItem('endless_stage_night', on ? '1' : '0'); } catch (e) {}
