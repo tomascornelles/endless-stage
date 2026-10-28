@@ -1133,7 +1133,8 @@ function init(M) {
     }
   }
   // Ancho: 20 m al inicio, -0,5 m por cada km, mínimo 4 m
-  const roadWidthAt = d => Math.max(4, 18 - d / 1000 + 2 * Math.sin(d / 170));
+  // Ancho: 18 m al inicio, -1 m por km, ±2 m de variación suave (onda de 400 m), mínimo 4 m
+  const roadWidthAt = d => Math.max(4, 18 - d / 1000 + 2 * Math.sin(d / 400));
   scene.add(world);
   let gk = 0, gh = 0, gslope = 0, gx = 0, gy = 0, gz = 0, gT = 0, gTimer = 0, segQueue = [];
 
